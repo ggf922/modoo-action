@@ -33,7 +33,7 @@ function renderFooter() {
   <footer class="mt-16 border-t border-gray-100 bg-white">
     <div class="max-w-6xl mx-auto px-4 py-8 text-center text-sm text-gray-400">
       <div class="text-brand-orange font-bold text-base mb-1">모두모두 🎁</div>
-      <p>세계 최초 전원 수익형 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!</p>
+      <p>세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!</p>
       <p class="mt-2 text-xs">© 2026 ModooModoo Auction Mall. MVP Demo.</p>
     </div>
   </footer>`

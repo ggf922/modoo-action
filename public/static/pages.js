@@ -13,7 +13,7 @@ async function pageHome() {
   <section id="hero" class="relative rounded-3xl overflow-hidden mb-8 bg-gradient-to-br from-brand-orange to-red-500 text-white p-8 sm:p-12">
     <div class="relative z-10 max-w-2xl">
       <span class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-sm font-medium mb-3">🌍 세계 최초 전원 수익형 경매</span>
-      <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight mb-3">모두가 이익을 보는<br/>경매 쇼핑몰, 모두모두 🎁</h1>
+      <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight mb-3">모두가 이익을 보는<br/>공동 구매 경매 쇼핑몰, 모두모두 🎁</h1>
       <p class="text-white/90 mb-6 text-sm sm:text-base">낙찰되면 시중가보다 훨씬 저렴하게 자동 구매!<br/>아쉽게 미낙찰돼도 보상 포인트를 드려요.</p>
       <div class="flex flex-wrap gap-3 text-sm">
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🏆 낙찰자</div><div class="text-white/80">초저가 자동구매</div></div>

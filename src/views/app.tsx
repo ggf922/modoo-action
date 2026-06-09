@@ -5,7 +5,7 @@ export function renderApp(): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>모두모두 🎁 경매몰 — 전원 수익형 경매</title>
-  <meta name="description" content="낙찰자는 저렴하게, 미낙찰자는 보상 포인트! 모두가 이익을 보는 세계 최초 전원 수익형 경매 쇼핑몰" />
+  <meta name="description" content="낙찰자는 저렴하게, 미낙찰자는 보상 포인트! 모두가 이익을 보는 세계 최초 전원 수익형 공동 구매 경매 쇼핑몰" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
