@@ -31,3 +31,8 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+# Cloudflare / wrangler
+.wrangler/
+dist/
+.dev.vars
