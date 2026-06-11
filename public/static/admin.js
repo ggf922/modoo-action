@@ -152,7 +152,29 @@ async function pageAdminProductForm(params) {
       ${f('title', '상품명 *')}
       <div><label class="block text-sm font-medium mb-1">설명</label>
         <textarea name="description" rows="3" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange">${p.description||''}</textarea></div>
-      ${f('imageUrl', '이미지 URL *', 'url')}
+
+      <!-- 상품 상세 이미지 업로드 (로컬 파일 → 자동 압축 → Base64) -->
+      <div>
+        <label class="block text-sm font-medium mb-1">상품 상세 이미지 *</label>
+        <input type="hidden" name="imageUrl" id="img-data" value="${(p.imageUrl ?? '').replace(/"/g, '&quot;')}" />
+        <div class="flex items-start gap-4">
+          <div id="img-preview-box" class="w-32 h-32 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+            ${p.imageUrl ? `<img id="img-preview" src="${p.imageUrl}" class="w-full h-full object-cover" />` : `<span id="img-placeholder" class="text-gray-300 text-center text-xs px-2"><i class="fas fa-image text-2xl block mb-1"></i>미리보기</span>`}
+          </div>
+          <div class="flex-1 min-w-0">
+            <label class="inline-block cursor-pointer bg-brand-dark text-white px-4 py-2.5 rounded-xl text-sm font-medium">
+              <i class="fas fa-upload"></i> 파일 선택
+              <input type="file" accept="image/*" class="hidden" onchange="handleProductImage(this)" />
+            </label>
+            <div id="img-info" class="text-xs text-gray-400 mt-2 leading-relaxed">
+              JPG · PNG · WebP 지원<br/>
+              업로드 시 <b>가로 800px · 품질 80%</b>로 자동 압축됩니다.<br/>
+              권장: <b>600×600 정사각형</b>, 200KB 이하
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-sm font-medium mb-1">카테고리 *</label>
           <select name="category" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange">
@@ -190,10 +212,14 @@ async function pageAdminProductForm(params) {
           <span id="pv-discount" class="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">- % OFF</span>
         </div>
         <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> 할인율은 시중가·시작가로 자동 계산되어 상품 카드에 <b>"○○% OFF"</b>로 표시됩니다.</p>
+        <div class="mt-2 flex items-center gap-2 text-sm bg-orange-100/60 rounded-xl px-3 py-2">
+          <i class="fas fa-gavel text-brand-orange"></i>
+          <span class="text-gray-600">참가비는 시작가와 동일하게 자동 책정 →</span>
+          <b id="pv-entryfee" class="text-brand-orange">- P</b>
+        </div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        ${f('entryFee', '참가비(P) *', 'number')}
+      <div class="grid grid-cols-3 gap-3">
         ${f('maxParticipants', '정원', 'number')}
         ${f('winnersCount', '당첨자수', 'number')}
         ${f('losingReward', '미당첨보상(P)', 'number')}
@@ -212,6 +238,7 @@ async function pageAdminProductForm(params) {
     if (!mp || mp <= 0) { toast('시중가를 올바르게 입력해주세요.', 'warn'); return }
     if (!sp || sp <= 0) { toast('시작가를 올바르게 입력해주세요.', 'warn'); return }
     if (sp > mp) { toast('시작가는 시중가보다 클 수 없습니다.', 'warn'); return }
+    if (!payload.imageUrl) { toast('상품 상세 이미지를 업로드해주세요.', 'warn'); return }
     try {
       if (id) await api.put('/admin/products/' + id, payload)
       else await api.post('/admin/products', payload)
@@ -219,6 +246,49 @@ async function pageAdminProductForm(params) {
       Router.navigate('/admin/products')
     } catch (err) { toast(errMsg(err), 'error') }
   })
+}
+
+// 로컬 이미지 업로드 → 브라우저에서 리사이즈/압축 → Base64 변환
+function handleProductImage(input) {
+  const file = input.files && input.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) { toast('이미지 파일만 업로드할 수 있어요.', 'warn'); return }
+  // 원본이 너무 크면 경고 (압축은 하지만 메모리 보호)
+  if (file.size > 15 * 1024 * 1024) { toast('15MB 이하 이미지를 올려주세요.', 'warn'); return }
+
+  const MAX_W = 800       // 최대 가로 800px
+  const QUALITY = 0.8     // JPEG 품질 80%
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    const img = new Image()
+    img.onload = () => {
+      // 비율 유지 리사이즈
+      let w = img.width, h = img.height
+      if (w > MAX_W) { h = Math.round(h * (MAX_W / w)); w = MAX_W }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#ffffff' // 투명 PNG → 흰 배경
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      const dataUrl = canvas.toDataURL('image/jpeg', QUALITY)
+
+      // hidden input에 저장 + 미리보기 갱신
+      document.getElementById('img-data').value = dataUrl
+      const box = document.getElementById('img-preview-box')
+      box.innerHTML = `<img id="img-preview" src="${dataUrl}" class="w-full h-full object-cover" />`
+
+      // 용량 표시
+      const kb = Math.round((dataUrl.length * 3 / 4) / 1024)
+      const info = document.getElementById('img-info')
+      const warn = kb > 250 ? ' <span class="text-amber-600">(권장 250KB 초과 — 더 작은 이미지를 권장)</span>' : ' <span class="text-green-600">✓ 최적화됨</span>'
+      info.innerHTML = `압축 결과: <b>${w}×${h}px · 약 ${kb}KB</b>${warn}<br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
+      toast('이미지가 자동 압축되어 적용되었어요. ✅', 'success')
+    }
+    img.onerror = () => toast('이미지를 읽을 수 없어요.', 'error')
+    img.src = ev.target.result
+  }
+  reader.readAsDataURL(file)
 }
 
 // 가격 입력 실시간 미리보기 (시중가/시작가 → 할인율)
@@ -233,6 +303,8 @@ function updatePricePreview() {
   if (!pvMarket) return
   pvMarket.textContent = mp > 0 ? `${won(mp)}원` : '- 원'
   pvStart.textContent = sp > 0 ? `${won(sp)}원` : '- 원'
+  const pvEntry = document.getElementById('pv-entryfee')
+  if (pvEntry) pvEntry.textContent = sp > 0 ? `${won(sp)} P` : '- P'
   if (mp > 0 && sp > 0 && sp <= mp) {
     const discount = Math.round((1 - sp / mp) * 100)
     pvDiscount.textContent = `${discount}% OFF`

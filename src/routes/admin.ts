@@ -44,7 +44,7 @@ admin.get('/products', async (c) => {
 admin.post('/products', async (c) => {
   const b = await c.req.json().catch(() => null)
   if (!b) return c.json({ error: '잘못된 요청입니다.' }, 400)
-  const required = ['title', 'imageUrl', 'category', 'marketPrice', 'startPrice', 'entryFee']
+  const required = ['title', 'imageUrl', 'category', 'marketPrice', 'startPrice']
   for (const k of required) {
     if (b[k] === undefined || b[k] === null || b[k] === '') return c.json({ error: `${k} 항목이 필요합니다.` }, 400)
   }
@@ -52,13 +52,15 @@ admin.post('/products', async (c) => {
   if (mp <= 0) return c.json({ error: '시중가는 0보다 커야 합니다.' }, 400)
   if (sp <= 0) return c.json({ error: '시작가는 0보다 커야 합니다.' }, 400)
   if (sp > mp) return c.json({ error: '시작가는 시중가보다 클 수 없습니다.' }, 400)
+  // 참가비는 시작가와 동일하게 자동 설정
+  const entryFee = sp
   const id = genId('p-')
   await c.env.DB.prepare(
     `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, startAt, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', datetime('now'), datetime('now'))`
   ).bind(
     id, b.title, b.description ?? '', b.imageUrl, b.category,
-    Number(b.marketPrice), Number(b.startPrice), Number(b.entryFee),
+    mp, sp, entryFee,
     Number(b.maxParticipants ?? 10), Number(b.winnersCount ?? 1), Number(b.losingReward ?? 200)
   ).run()
   return c.json({ ok: true, id })
@@ -78,11 +80,13 @@ admin.put('/products/:id', async (c) => {
   if (mp <= 0) return c.json({ error: '시중가는 0보다 커야 합니다.' }, 400)
   if (sp <= 0) return c.json({ error: '시작가는 0보다 커야 합니다.' }, 400)
   if (sp > mp) return c.json({ error: '시작가는 시중가보다 클 수 없습니다.' }, 400)
+  // 참가비는 시작가와 동일하게 자동 설정
+  const entryFee = sp
   await c.env.DB.prepare(
     `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=? WHERE id=?`
   ).bind(
     b.title, b.description ?? '', b.imageUrl, b.category,
-    Number(b.marketPrice), Number(b.startPrice), Number(b.entryFee),
+    mp, sp, entryFee,
     Number(b.maxParticipants), Number(b.winnersCount), Number(b.losingReward),
     b.status ?? 'OPEN', id
   ).run()
