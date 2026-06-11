@@ -47,7 +47,10 @@
 1. **경매 참여 (트랜잭션)**: 포인트 검증 → 중복/정원 차단 → 차감 + Bid 생성 + 내역 기록 → 정원 도달 시 `drawWinners()` 자동 호출
 2. **추첨**: Fisher-Yates 셔플 → 앞 `winnersCount`명 당첨 → 당첨자 Winner 생성 + 자동구매 / 미당첨자 `losingReward` 지급 → status=DRAWN
 3. **추천 보너스**: 가입 시 추천코드 검증 → 신규회원 고유코드(8자리 대문자) 발급 → 추천인 `wagePoint += referralBonus`
+   - **추천코드 미입력 시 회사(관리자)를 추천인으로 자동 적용** (조직도 단절 방지, 회사 추천 보너스 지급)
 4. **조직도**: 본인 루트로 산하 최대 5단계 BFS 조회 (상위 추천인 절대 비노출)
+   - **관리자 전체 조직도**: 회사(관리자) 루트 기준 전 회원 추천인 계보도 SVG 트리
+5. **회원 관리(관리자)**: 정보 수정(이름/닉네임/이메일/연락처/추천인 변경 — 순환참조 방지) · 삭제(하위 회원은 삭제 회원의 추천인에게 자동 승계, 관리자 계정 삭제 차단)
 5. **출금**: 잔액+임금 합계에서 차감, 최소 금액 검증, PENDING → 관리자 승인 시 차감 + COMPLETED
 
 ## 📱 화면 라우트 (해시 기반 SPA)
@@ -67,7 +70,8 @@
 | `#/admin/products` | 상품 목록/강제추첨/삭제 | Admin |
 | `#/admin/products/new` | 상품 등록 | Admin |
 | `#/admin/products/:id/edit` | 상품 수정 | Admin |
-| `#/admin/members` | 회원 관리(검색+포인트 조정) | Admin |
+| `#/admin/members` | 회원 관리(검색+포인트 조정+수정/삭제) | Admin |
+| `#/admin/network` | 전체 조직도(추천인 계보도 SVG 트리) | Admin |
 | `#/admin/withdrawals` | 출금 승인/거절 | Admin |
 | `#/admin/config` | 사이트 전역 설정 | Admin |
 
@@ -76,7 +80,9 @@
 - `GET /api/products`, `GET /api/products/:id`, `POST /api/products/:id/join`
 - `POST /api/me/charge | withdraw | bank`, `GET /api/me/history | bids | withdrawals | network`
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
-- `GET /api/admin/members`, `POST /api/admin/members/:id/adjust`
+- `GET /api/admin/members`, `GET /api/admin/members/:id`, `POST /api/admin/members/:id/adjust`
+- `PUT /api/admin/members/:id` (정보/추천인 수정), `DELETE /api/admin/members/:id` (삭제+하위 승계)
+- `GET /api/admin/network` (전체 조직도 — 회사 루트 추천인 계보도)
 - `GET /api/admin/withdrawals`, `POST /api/admin/withdrawals/:id/process`
 - `GET|PUT /api/admin/config`, `PATCH /api/admin/products/:id/settings` (상품별 빠른 설정)
 
@@ -109,12 +115,12 @@ npm run db:reset
 ```
 
 ## ✅ 완료된 기능
-- 회원가입(추천코드 검증/보너스 지급) · 로그인/로그아웃 · JWT 세션
+- 회원가입(추천코드 검증/보너스 지급, **추천코드 미입력 시 회사(관리자) 자동 추천**) · 로그인/로그아웃 · JWT 세션
 - 메인/상품카드/참여자 게이지(👤 10개 점등 + 진행바)
 - 경매 참여(트랜잭션) + 정원 도달 자동 추첨 + 당첨/미당첨 모달(슬롯/폭죽)
 - 마이페이지 4종 포인트 카드 · 더미 충전 · 출금 신청/계좌등록 · 포인트 내역(필터) · 참여 내역(탭)
 - 조직도 SVG 트리(본인 산하 5단계, 상위 비노출) + 노드 활동 요약 패널
-- 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정 · 출금 승인
+- 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정/**정보 수정·삭제** · **전체 조직도(추천인 계보도 SVG 트리)** · 출금 승인
 - 설정 페이지: **전역 기본값**(신규 상품 등록 시 당첨자수·미당첨보상 자동 적용) + **상품별 개별 빠른 설정 테이블**(당첨자수·미당첨보상·정원 인라인 수정)
 - Mobile First 반응형 디자인 · 한국어 UI · 오렌지/골드 테마 · Pretendard 폰트
 

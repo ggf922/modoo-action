@@ -196,18 +196,21 @@ async function pageAdminMembers(params, query) {
   const q = query.q || ''
   const { data } = await api.get('/admin/members' + (q ? '?q=' + encodeURIComponent(q) : ''))
   document.getElementById('app').innerHTML = adminLayout('/admin/members', `
-    <div class="flex items-center justify-between mb-4 gap-2">
+    <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
       <h2 class="font-bold">회원 목록 (${data.members.length})</h2>
-      <form id="member-search" class="flex gap-2">
-        <input name="q" value="${q}" placeholder="이름/이메일/닉네임 검색" class="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
-        <button class="bg-brand-dark text-white px-3 py-2 rounded-xl text-sm"><i class="fas fa-search"></i></button>
-      </form>
+      <div class="flex gap-2 items-center">
+        <a href="#/admin/network" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-sitemap"></i> 조직도 보기</a>
+        <form id="member-search" class="flex gap-2">
+          <input name="q" value="${q}" placeholder="이름/이메일/닉네임 검색" class="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
+          <button class="bg-brand-dark text-white px-3 py-2 rounded-xl text-sm"><i class="fas fa-search"></i></button>
+        </form>
+      </div>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="w-full text-sm min-w-[640px]">
         <thead class="bg-gray-50 text-gray-500 text-xs"><tr>
           <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">추천인</th>
-          <th class="px-3 py-2">경매P</th><th class="px-3 py-2">잔액P</th><th class="px-3 py-2">임금P</th><th class="px-3 py-2">조정</th>
+          <th class="px-3 py-2">경매P</th><th class="px-3 py-2">잔액P</th><th class="px-3 py-2">임금P</th><th class="px-3 py-2">관리</th>
         </tr></thead>
         <tbody class="divide-y divide-gray-50">
         ${data.members.map(m => `<tr>
@@ -217,7 +220,13 @@ async function pageAdminMembers(params, query) {
           <td class="px-3 py-2 text-center font-medium text-brand-orange">${won(m.auctionPoint)}</td>
           <td class="px-3 py-2 text-center font-medium text-green-600">${won(m.balancePoint)}</td>
           <td class="px-3 py-2 text-center font-medium text-blue-600">${won(m.wagePoint)}</td>
-          <td class="px-3 py-2 text-center"><button onclick="openAdjust('${m.id}','${m.nickname}')" class="text-xs bg-orange-50 text-brand-orange px-2 py-1 rounded-lg font-medium">조정</button></td>
+          <td class="px-3 py-2">
+            <div class="flex gap-1 justify-center whitespace-nowrap">
+              <button onclick="openAdjust('${m.id}','${m.nickname}')" class="text-xs bg-orange-50 text-brand-orange px-2 py-1 rounded-lg font-medium">조정</button>
+              <button onclick="openMemberEdit('${m.id}')" class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-pen"></i></button>
+              ${m.role==='ADMIN' ? '' : `<button onclick="deleteMember('${m.id}','${m.nickname}')" class="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-lg font-medium"><i class="fas fa-trash"></i></button>`}
+            </div>
+          </td>
         </tr>`).join('')}
         </tbody>
       </table>
@@ -227,6 +236,59 @@ async function pageAdminMembers(params, query) {
     const q = new FormData(e.target).get('q')
     Router.navigate('/admin/members' + (q ? '?q=' + encodeURIComponent(q) : ''))
   })
+}
+
+// 회원 정보 수정 모달
+async function openMemberEdit(userId) {
+  let m
+  try { m = (await api.get('/admin/members/' + userId)).data.member }
+  catch (err) { toast(errMsg(err), 'error'); return }
+  openModal(`<div class="p-6">
+    <h3 class="font-extrabold text-lg mb-1">회원 정보 수정</h3>
+    <p class="text-sm text-gray-400 mb-4">코드 ${m.referralCode}${m.role==='ADMIN'?' · <span class="text-brand-dark font-medium">관리자</span>':''}</p>
+    <div class="space-y-3">
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">이름</label>
+        <input id="me-name" value="${m.name||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">닉네임</label>
+        <input id="me-nickname" value="${m.nickname||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">이메일</label>
+        <input id="me-email" type="email" value="${m.email||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">연락처</label>
+        <input id="me-phone" value="${m.phone||''}" placeholder="010-0000-0000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">추천인 코드 <span class="text-gray-300">(현재: ${m.referrerNickname ? '@'+m.referrerNickname : '없음'})</span></label>
+        <input id="me-referrer" placeholder="변경 시 추천코드 입력 (비우면 추천인 없음)" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+        <p class="text-xs text-gray-300 mt-1">입력하지 않으면 추천인은 변경되지 않아요.</p></div>
+    </div>
+    <div class="flex gap-2 mt-5">
+      <button onclick="closeModal()" class="flex-1 border border-gray-200 py-2.5 rounded-xl">취소</button>
+      <button onclick="saveMemberEdit('${userId}')" class="flex-1 bg-brand-orange text-white py-2.5 rounded-xl font-bold">저장</button>
+    </div>
+  </div>`)
+  // 추천인 변경칸: 사용자가 의도적으로 비우면 '추천인 없음'으로 인식해야 하므로 sentinel 처리
+  window.__memberEditHadReferrer = !!m.referrerId
+}
+async function saveMemberEdit(userId) {
+  const val = (id) => document.getElementById(id).value.trim()
+  const payload = {
+    name: val('me-name'),
+    nickname: val('me-nickname'),
+    email: val('me-email'),
+    phone: val('me-phone'),
+  }
+  // 추천인 코드는 입력했을 때만 전송 (빈칸이면 변경 안 함)
+  const refCode = val('me-referrer')
+  if (refCode) payload.referrerCode = refCode
+  try {
+    await api.put('/admin/members/' + userId, payload)
+    closeModal(); toast('회원 정보가 수정되었습니다. ✅', 'success'); pageAdminMembers({}, getQuery())
+  } catch (err) { toast(errMsg(err), 'error') }
+}
+async function deleteMember(userId, nickname) {
+  if (!confirm(`@${nickname} 회원을 삭제하시겠습니까?\n\n· 참여/당첨/출금/포인트 내역이 모두 삭제됩니다.\n· 하위 회원은 이 회원의 추천인에게 자동 승계됩니다.`)) return
+  try {
+    await api.delete('/admin/members/' + userId)
+    toast('회원이 삭제되었습니다.', 'success'); pageAdminMembers({}, getQuery())
+  } catch (err) { toast(errMsg(err), 'error') }
 }
 function openAdjust(userId, nickname) {
   openModal(`<div class="p-6">
@@ -382,4 +444,120 @@ async function saveProductSettings(pid) {
     row.style.background = '#FFF7ED'
     setTimeout(() => { row.style.background = '' }, 800)
   } catch (err) { toast(errMsg(err), 'error') }
+}
+
+// ===== 관리자 전체 조직도 (추천인 계보도) =====
+async function pageAdminNetwork() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  const { data } = await api.get('/admin/network')
+  const { root, members, summary, total } = data
+
+  // 추천 관계로 트리 구성 (referrerId 기준)
+  const byParent = {}
+  members.forEach(m => {
+    if (m.id === root.id) return
+    const pid = m.referrerId || '__orphan__'
+    ;(byParent[pid] = byParent[pid] || []).push(m)
+  })
+  // 추천인이 없는(루트가 아닌) 회원은 루트 아래에 묶어 표시
+  const orphans = byParent['__orphan__'] || []
+  if (orphans.length) {
+    byParent[root.id] = (byParent[root.id] || []).concat(orphans)
+  }
+
+  const NODE_W = 158, NODE_H = 70, H_GAP = 26, V_GAP = 76
+  const positions = {}
+  let leafX = 0
+  function computeLayout(id, depth) {
+    const children = byParent[id] || []
+    if (children.length === 0) {
+      const x = leafX * (NODE_W + H_GAP)
+      positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
+      leafX++
+      return x
+    }
+    const childXs = children.map(ch => computeLayout(ch.id, depth + 1))
+    const x = (Math.min(...childXs) + Math.max(...childXs)) / 2
+    positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
+    return x
+  }
+  computeLayout(root.id, 0)
+
+  const maxX = Math.max(...Object.values(positions).map(p => p.x)) + NODE_W
+  const maxY = Math.max(...Object.values(positions).map(p => p.y)) + NODE_H
+  const svgW = Math.max(maxX + 20, 320)
+  const svgH = maxY + 20
+
+  // 엣지
+  let edges = ''
+  members.forEach(m => {
+    if (m.id === root.id) return
+    const pid = m.referrerId || root.id
+    const p = positions[pid], cc = positions[m.id]
+    if (!p || !cc) return
+    const x1 = p.x + NODE_W/2, y1 = p.y + NODE_H
+    const x2 = cc.x + NODE_W/2, y2 = cc.y
+    const my = (y1 + y2) / 2
+    edges += `<path d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" stroke="#cbd5e0" stroke-width="2" fill="none"/>`
+  })
+
+  // 노드
+  let nodeEls = ''
+  members.forEach(m => {
+    const pos = positions[m.id]
+    if (!pos) return
+    const isRoot = m.id === root.id
+    const isAdmin = m.role === 'ADMIN'
+    const fill = isRoot || isAdmin ? '#FFC107' : '#60a5fa'
+    const s = summary[m.id] || { bids: 0, wins: 0 }
+    const nodePayload = JSON.stringify({ ...m, ...s, isRoot }).replace(/'/g, '&#39;')
+    nodeEls += `<g transform="translate(${pos.x},${pos.y})" style="cursor:pointer" onclick='showAdminNodeDetail(${nodePayload})'>
+      <rect width="${NODE_W}" height="${NODE_H}" rx="12" fill="white" stroke="${fill}" stroke-width="2.5"/>
+      <rect width="6" height="${NODE_H}" rx="3" fill="${fill}"/>
+      <text x="16" y="22" font-size="14" font-weight="700" fill="#2D3748">${m.name}${isAdmin?' 👑':''}</text>
+      <text x="16" y="40" font-size="11" fill="#718096">@${m.nickname} · ${m.referralCode}</text>
+      <text x="16" y="56" font-size="10" fill="#a0aec0">참여${s.bids}/당첨${s.wins} · 임금${won(m.wagePoint)}P</text>
+    </g>`
+  })
+
+  document.getElementById('app').innerHTML = adminLayout('/admin/members', `
+    <a href="#/admin/members" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 회원목록</a>
+    <div class="flex items-center justify-between mt-3 mb-4 flex-wrap gap-2">
+      <h2 class="font-bold text-lg"><i class="fas fa-sitemap text-blue-600"></i> 전체 조직도 (추천인 계보도)</h2>
+      <span class="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-medium">전체 ${total}명</span>
+    </div>
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-4 overflow-auto">
+        <div class="flex gap-3 text-xs text-gray-500 mb-3">
+          <span><span class="inline-block w-3 h-3 rounded bg-brand-gold align-middle"></span> 회사(관리자)</span>
+          <span><span class="inline-block w-3 h-3 rounded bg-blue-400 align-middle"></span> 회원</span>
+        </div>
+        <svg viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" style="min-width:${svgW}px">${edges}${nodeEls}</svg>
+      </div>
+      <div id="admin-node-detail" class="bg-white rounded-2xl border border-gray-100 p-5">
+        <div class="text-center text-gray-400 py-8"><div class="text-3xl mb-2">👆</div><p class="text-sm">노드를 클릭하면<br/>회원 상세가 표시돼요</p></div>
+      </div>
+    </div>`)
+}
+
+function showAdminNodeDetail(n) {
+  const el = document.getElementById('admin-node-detail')
+  const isAdmin = n.role === 'ADMIN'
+  el.innerHTML = `
+    <div class="text-center mb-4">
+      <div class="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-white text-2xl mb-2" style="background:${isAdmin ? '#FFC107' : '#60a5fa'}">
+        ${isAdmin ? '👑' : '👤'}</div>
+      <div class="font-extrabold text-lg">${n.name}</div>
+      <div class="text-sm text-gray-400">@${n.nickname} · ${n.referralCode}</div>
+    </div>
+    <div class="space-y-2 text-sm">
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">가입일</span><span class="font-medium">${fmtDate(n.createdAt)}</span></div>
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매 참여</span><span class="font-medium">${n.bids}회</span></div>
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">낙찰</span><span class="font-medium text-brand-orange">${n.wins}회</span></div>
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매P</span><span class="font-medium text-brand-orange">${won(n.auctionPoint)}</span></div>
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">잔액P</span><span class="font-medium text-green-600">${won(n.balancePoint)}</span></div>
+      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">임금P</span><span class="font-medium text-blue-600">${won(n.wagePoint)}</span></div>
+    </div>
+    ${isAdmin ? '' : `<button onclick="openMemberEdit('${n.id}')" class="w-full mt-4 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium"><i class="fas fa-pen"></i> 이 회원 수정</button>`}`
 }

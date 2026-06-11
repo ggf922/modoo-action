@@ -39,6 +39,15 @@ auth.post('/register', async (c) => {
     }
   }
 
+  // 추천인이 없으면 회사(관리자)를 기본 추천인으로 자동 적용
+  let isCompanyReferral = false
+  if (!referrer) {
+    referrer = await c.env.DB.prepare(
+      "SELECT * FROM users WHERE role = 'ADMIN' ORDER BY createdAt ASC LIMIT 1"
+    ).first<UserRow>()
+    isCompanyReferral = true
+  }
+
   // 사이트 설정(추천 보너스)
   const config = await c.env.DB.prepare('SELECT referralBonus FROM site_config LIMIT 1').first<{ referralBonus: number }>()
   const referralBonus = config?.referralBonus ?? 500
@@ -68,11 +77,14 @@ auth.post('/register', async (c) => {
     stmts.push(
       c.env.DB.prepare('UPDATE users SET wagePoint = wagePoint + ? WHERE id = ?').bind(referralBonus, referrer.id)
     )
+    const bonusDesc = isCompanyReferral
+      ? `회사 추천 가입 보너스 (${nickname})`
+      : `추천 가입 보너스 (${nickname})`
     stmts.push(
       c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
          VALUES (?, ?, 'REFERRAL', 'WAGE', ?, ?, datetime('now'))`
-      ).bind(genId('ph-'), referrer.id, referralBonus, `추천 가입 보너스 (${nickname})`)
+      ).bind(genId('ph-'), referrer.id, referralBonus, bonusDesc)
     )
   }
 

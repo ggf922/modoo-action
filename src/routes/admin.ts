@@ -173,6 +173,111 @@ admin.post('/members/:id/adjust', async (c) => {
   return c.json({ ok: true })
 })
 
+// 단일 회원 상세 (수정 폼용)
+admin.get('/members/:id', async (c) => {
+  const m = await c.env.DB.prepare(
+    `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role,
+            u.auctionPoint, u.balancePoint, u.wagePoint, u.referralCode, u.referrerId,
+            u.bankName, u.bankAccount, u.accountHolder, u.createdAt,
+            r.nickname AS referrerNickname, r.name AS referrerName
+     FROM users u LEFT JOIN users r ON r.id = u.referrerId
+     WHERE u.id = ?`
+  ).bind(c.req.param('id')).first()
+  if (!m) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+  return c.json({ member: m })
+})
+
+// 회원 정보 수정 (이름/닉네임/연락처/이메일/추천인)
+admin.put('/members/:id', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  if (!b) return c.json({ error: '잘못된 요청입니다.' }, 400)
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>()
+  if (!user) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+
+  const name = String(b.name ?? user.name).trim()
+  const nickname = String(b.nickname ?? user.nickname).trim()
+  const email = String(b.email ?? user.email).trim()
+  const phone = b.phone !== undefined ? (b.phone === '' ? null : String(b.phone).trim()) : user.phone
+  if (!name || !nickname || !email) return c.json({ error: '이름·닉네임·이메일은 필수입니다.' }, 400)
+
+  // 이메일/닉네임 중복 검사 (본인 제외)
+  const dup = await c.env.DB.prepare(
+    'SELECT id FROM users WHERE (email = ? OR nickname = ?) AND id != ?'
+  ).bind(email, nickname, id).first()
+  if (dup) return c.json({ error: '이미 사용 중인 이메일 또는 닉네임입니다.' }, 409)
+
+  // 추천인 변경 (추천코드로 지정, 비우면 변경 안 함)
+  let referrerId = user.referrerId
+  if (b.referrerCode !== undefined) {
+    const code = String(b.referrerCode).trim().toUpperCase()
+    if (code === '') {
+      referrerId = null
+    } else {
+      const ref = await c.env.DB.prepare('SELECT id FROM users WHERE referralCode = ?').bind(code).first<{ id: string }>()
+      if (!ref) return c.json({ error: '존재하지 않는 추천코드입니다.' }, 400)
+      if (ref.id === id) return c.json({ error: '자기 자신을 추천인으로 지정할 수 없습니다.' }, 400)
+      // 순환 참조 방지: 지정하려는 추천인이 본인의 하위면 거부
+      let cursor: string | null = ref.id
+      for (let i = 0; i < 50 && cursor; i++) {
+        if (cursor === id) return c.json({ error: '하위 회원을 추천인으로 지정할 수 없습니다 (순환 참조).' }, 400)
+        const up = await c.env.DB.prepare('SELECT referrerId FROM users WHERE id = ?').bind(cursor).first<{ referrerId: string | null }>()
+        cursor = up?.referrerId ?? null
+      }
+      referrerId = ref.id
+    }
+  }
+
+  await c.env.DB.prepare(
+    "UPDATE users SET name = ?, nickname = ?, email = ?, phone = ?, referrerId = ?, updatedAt = datetime('now') WHERE id = ?"
+  ).bind(name, nickname, email, phone, referrerId, id).run()
+  return c.json({ ok: true })
+})
+
+// 회원 삭제 (하위 회원은 삭제 회원의 추천인에게 승계)
+admin.delete('/members/:id', async (c) => {
+  const id = c.req.param('id')
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>()
+  if (!user) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+  if (user.role === 'ADMIN') return c.json({ error: '관리자 계정은 삭제할 수 없습니다.' }, 400)
+
+  // 하위 회원(직속)을 삭제 대상의 추천인에게 승계 (조직도 단절 방지)
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET referrerId = ? WHERE referrerId = ?').bind(user.referrerId ?? null, id),
+    c.env.DB.prepare('DELETE FROM winners WHERE userId = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM bids WHERE userId = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM withdrawals WHERE userId = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM point_history WHERE userId = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id),
+  ])
+  return c.json({ ok: true })
+})
+
+// 전체 조직도 (관리자 전용) — 관리자 루트 기준 전체 트리
+admin.get('/network', async (c) => {
+  const db = c.env.DB
+  // 전체 회원(관리자 포함)
+  const all = (await db.prepare(
+    `SELECT id, name, nickname, role, referrerId, referralCode, createdAt,
+            auctionPoint, balancePoint, wagePoint
+     FROM users`
+  ).all<any>()).results
+
+  // 활동 요약 (참여/당첨)
+  const summary: Record<string, { bids: number; wins: number }> = {}
+  for (const u of all) summary[u.id] = { bids: 0, wins: 0 }
+  const bidRows = (await db.prepare('SELECT userId, COUNT(*) AS cnt FROM bids GROUP BY userId').all<{ userId: string; cnt: number }>()).results
+  const winRows = (await db.prepare('SELECT userId, COUNT(*) AS cnt FROM winners GROUP BY userId').all<{ userId: string; cnt: number }>()).results
+  for (const r of bidRows) if (summary[r.userId]) summary[r.userId].bids = r.cnt
+  for (const r of winRows) if (summary[r.userId]) summary[r.userId].wins = r.cnt
+
+  // 루트(관리자) 식별
+  const root = all.find((u) => u.role === 'ADMIN') ?? all.find((u) => !u.referrerId) ?? all[0]
+
+  return c.json({ root, members: all, summary, total: all.length })
+})
+
 // ===== 출금 관리 =====
 admin.get('/withdrawals', async (c) => {
   const rows = (await c.env.DB.prepare(
