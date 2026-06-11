@@ -165,9 +165,34 @@ async function pageAdminProductForm(params) {
             <option value="DRAWN" ${p.status==='DRAWN'?'selected':''}>추첨완료</option>
           </select></div>` : '<div></div>'}
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        ${f('marketPrice', '시중가(원) *', 'number')}
-        ${f('startPrice', '시작가(원) *', 'number')}
+      <!-- 가격 설정 (취소선 시중가 + 시작가 직접 입력) -->
+      <div class="rounded-2xl border-2 border-orange-100 bg-orange-50/40 p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-7 h-7 rounded-lg bg-brand-orange text-white flex items-center justify-center text-sm"><i class="fas fa-tag"></i></span>
+          <h3 class="font-bold text-sm">가격 설정</h3>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">시중가(원) * <span class="text-gray-400 font-normal">— 취소선 가격</span></label>
+            <input name="marketPrice" type="number" min="0" value="${p.marketPrice ?? ''}" oninput="updatePricePreview()" placeholder="예: 250000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">시작가(원) * <span class="text-brand-orange font-normal">— 실제 판매가</span></label>
+            <input name="startPrice" type="number" min="0" value="${p.startPrice ?? ''}" oninput="updatePricePreview()" placeholder="예: 50000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+          </div>
+        </div>
+        <!-- 실시간 미리보기 -->
+        <div id="price-preview" class="mt-3 flex items-center justify-between bg-white rounded-xl border border-gray-100 px-4 py-3">
+          <div>
+            <div id="pv-market" class="text-gray-400 text-sm line-through-soft">- 원</div>
+            <div id="pv-start" class="text-brand-orange font-extrabold text-xl">- 원</div>
+          </div>
+          <span id="pv-discount" class="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">- % OFF</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> 할인율은 시중가·시작가로 자동 계산되어 상품 카드에 <b>"○○% OFF"</b>로 표시됩니다.</p>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         ${f('entryFee', '참가비(P) *', 'number')}
         ${f('maxParticipants', '정원', 'number')}
         ${f('winnersCount', '당첨자수', 'number')}
@@ -177,9 +202,16 @@ async function pageAdminProductForm(params) {
       <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">${id?'수정하기':'등록하기'}</button>
     </form>`)
 
+  updatePricePreview() // 초기 렌더
+
   document.getElementById('product-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const payload = Object.fromEntries(new FormData(e.target).entries())
+    // 가격 유효성 검사
+    const mp = Number(payload.marketPrice), sp = Number(payload.startPrice)
+    if (!mp || mp <= 0) { toast('시중가를 올바르게 입력해주세요.', 'warn'); return }
+    if (!sp || sp <= 0) { toast('시작가를 올바르게 입력해주세요.', 'warn'); return }
+    if (sp > mp) { toast('시작가는 시중가보다 클 수 없습니다.', 'warn'); return }
     try {
       if (id) await api.put('/admin/products/' + id, payload)
       else await api.post('/admin/products', payload)
@@ -187,6 +219,31 @@ async function pageAdminProductForm(params) {
       Router.navigate('/admin/products')
     } catch (err) { toast(errMsg(err), 'error') }
   })
+}
+
+// 가격 입력 실시간 미리보기 (시중가/시작가 → 할인율)
+function updatePricePreview() {
+  const mpEl = document.querySelector('input[name="marketPrice"]')
+  const spEl = document.querySelector('input[name="startPrice"]')
+  if (!mpEl || !spEl) return
+  const mp = Number(mpEl.value), sp = Number(spEl.value)
+  const pvMarket = document.getElementById('pv-market')
+  const pvStart = document.getElementById('pv-start')
+  const pvDiscount = document.getElementById('pv-discount')
+  if (!pvMarket) return
+  pvMarket.textContent = mp > 0 ? `${won(mp)}원` : '- 원'
+  pvStart.textContent = sp > 0 ? `${won(sp)}원` : '- 원'
+  if (mp > 0 && sp > 0 && sp <= mp) {
+    const discount = Math.round((1 - sp / mp) * 100)
+    pvDiscount.textContent = `${discount}% OFF`
+    pvDiscount.style.background = '#ef4444'
+  } else if (mp > 0 && sp > mp) {
+    pvDiscount.textContent = '시작가 > 시중가 ⚠️'
+    pvDiscount.style.background = '#f59e0b'
+  } else {
+    pvDiscount.textContent = '- % OFF'
+    pvDiscount.style.background = '#cbd5e0'
+  }
 }
 
 // 회원 관리

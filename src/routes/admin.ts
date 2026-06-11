@@ -48,6 +48,10 @@ admin.post('/products', async (c) => {
   for (const k of required) {
     if (b[k] === undefined || b[k] === null || b[k] === '') return c.json({ error: `${k} 항목이 필요합니다.` }, 400)
   }
+  const mp = Number(b.marketPrice), sp = Number(b.startPrice)
+  if (mp <= 0) return c.json({ error: '시중가는 0보다 커야 합니다.' }, 400)
+  if (sp <= 0) return c.json({ error: '시작가는 0보다 커야 합니다.' }, 400)
+  if (sp > mp) return c.json({ error: '시작가는 시중가보다 클 수 없습니다.' }, 400)
   const id = genId('p-')
   await c.env.DB.prepare(
     `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, startAt, createdAt)
@@ -70,6 +74,10 @@ admin.put('/products/:id', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json().catch(() => null)
   if (!b) return c.json({ error: '잘못된 요청입니다.' }, 400)
+  const mp = Number(b.marketPrice), sp = Number(b.startPrice)
+  if (mp <= 0) return c.json({ error: '시중가는 0보다 커야 합니다.' }, 400)
+  if (sp <= 0) return c.json({ error: '시작가는 0보다 커야 합니다.' }, 400)
+  if (sp > mp) return c.json({ error: '시작가는 시중가보다 클 수 없습니다.' }, 400)
   await c.env.DB.prepare(
     `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=? WHERE id=?`
   ).bind(

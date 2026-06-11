@@ -18,7 +18,7 @@ async function pageHome() {
       <div class="flex flex-wrap gap-3 text-sm">
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🏆 낙찰자</div><div class="text-white/80">초저가 자동구매</div></div>
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🎁 미낙찰자</div><div class="text-white/80">보상 포인트 지급</div></div>
-        <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">👥 추천하면</div><div class="text-white/80">임금 포인트 적립</div></div>
+        <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">👥 추천하면</div><div class="text-white/80">포인트 적립</div></div>
       </div>
     </div>
     <div class="absolute -right-8 -bottom-8 text-[160px] opacity-20 select-none">🎁</div>
