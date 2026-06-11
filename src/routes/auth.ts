@@ -120,6 +120,71 @@ auth.post('/login', async (c) => {
   return c.json({ ok: true, user: sessionUser })
 })
 
+// 비밀번호 찾기 (본인 확인 후 새 비밀번호로 즉시 재설정)
+// MVP: 이메일 발송 인프라가 없으므로 이메일/아이디 + 이름 + 휴대폰 일치 확인 후 재설정
+auth.post('/reset-password', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body) return c.json({ error: '잘못된 요청입니다.' }, 400)
+  const { email, name, phone, newPassword } = body
+
+  if (!email || !name || !phone || !newPassword) {
+    return c.json({ error: '모든 항목을 입력해주세요.' }, 400)
+  }
+  if (String(newPassword).length < 6) {
+    return c.json({ error: '새 비밀번호는 6자 이상이어야 합니다.' }, 400)
+  }
+
+  // 이메일(또는 아이디) 기준 사용자 조회
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(String(email).trim()).first<UserRow>()
+  if (!user) return c.json({ error: '일치하는 계정 정보를 찾을 수 없습니다.' }, 404)
+
+  // 본인 확인: 이름 + 휴대폰 일치
+  const inputPhone = String(phone).replace(/[^0-9]/g, '')
+  const dbPhone = String(user.phone ?? '').replace(/[^0-9]/g, '')
+  if (String(user.name).trim() !== String(name).trim() || dbPhone !== inputPhone) {
+    return c.json({ error: '계정 정보(이름·휴대폰)가 일치하지 않습니다.' }, 401)
+  }
+
+  const hashed = await hashPassword(String(newPassword))
+  await c.env.DB.prepare(
+    "UPDATE users SET password = ?, updatedAt = datetime('now') WHERE id = ?"
+  ).bind(hashed, user.id).run()
+
+  console.log(`[PASSWORD RESET] ${user.email} 비밀번호 재설정 완료`)
+  return c.json({ ok: true })
+})
+
+// 비밀번호 변경 (로그인 상태에서 현재 비밀번호 확인 후 변경)
+auth.post('/change-password', requireAuth, async (c) => {
+  const sessionUser = c.get('user')!
+  const body = await c.req.json().catch(() => null)
+  if (!body) return c.json({ error: '잘못된 요청입니다.' }, 400)
+  const { currentPassword, newPassword } = body
+
+  if (!currentPassword || !newPassword) {
+    return c.json({ error: '현재 비밀번호와 새 비밀번호를 입력해주세요.' }, 400)
+  }
+  if (String(newPassword).length < 6) {
+    return c.json({ error: '새 비밀번호는 6자 이상이어야 합니다.' }, 400)
+  }
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sessionUser.id).first<UserRow>()
+  if (!user) return c.json({ error: '사용자 정보를 찾을 수 없습니다.' }, 404)
+
+  const valid = await verifyPassword(String(currentPassword), user.password)
+  if (!valid) return c.json({ error: '현재 비밀번호가 올바르지 않습니다.' }, 401)
+
+  const same = await verifyPassword(String(newPassword), user.password)
+  if (same) return c.json({ error: '새 비밀번호가 기존 비밀번호와 동일합니다.' }, 400)
+
+  const hashed = await hashPassword(String(newPassword))
+  await c.env.DB.prepare(
+    "UPDATE users SET password = ?, updatedAt = datetime('now') WHERE id = ?"
+  ).bind(hashed, user.id).run()
+
+  return c.json({ ok: true })
+})
+
 // 로그아웃
 auth.post('/logout', (c) => {
   deleteCookie(c, 'token', { path: '/' })

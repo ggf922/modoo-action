@@ -130,7 +130,15 @@ async function pageMypage() {
   <div class="flex items-center justify-between mb-5">
     <div>
       <h1 class="text-2xl font-extrabold">${u.nickname}님의 마이페이지</h1>
-      <p class="text-sm text-gray-400">내 추천코드: <button onclick="copyCode('${u.referralCode}')" class="font-bold text-brand-orange">${u.referralCode} <i class="fas fa-copy text-xs"></i></button></p>
+      <div class="flex flex-wrap items-center gap-2 mt-1.5">
+        <span class="text-sm text-gray-400">내 추천코드:</span>
+        <button onclick="copyCode('${u.referralCode}')" class="inline-flex items-center gap-1 text-sm font-bold text-brand-orange bg-orange-50 px-2.5 py-1 rounded-lg hover:bg-orange-100 transition">
+          ${u.referralCode} <i class="fas fa-copy text-xs"></i>
+        </button>
+        <button onclick="copyReferralLink('${u.referralCode}')" class="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition">
+          <i class="fas fa-link text-xs"></i> 추천 링크 복사
+        </button>
+      </div>
     </div>
   </div>
 
@@ -153,6 +161,7 @@ async function pageMypage() {
     ${menuTile('#/mypage/history', 'fa-clock-rotate-left', '포인트 내역')}
     ${menuTile('#/mypage/network', 'fa-sitemap', '내 조직도')}
     ${menuTile('#/mypage/charge', 'fa-plus-circle', '포인트 충전')}
+    ${menuTile('#/mypage/password', 'fa-key', '비밀번호 변경')}
   </div>`)
 }
 function menuTile(href, icon, label) {
@@ -160,11 +169,71 @@ function menuTile(href, icon, label) {
     <div class="text-2xl text-brand-orange mb-2"><i class="fas ${icon}"></i></div>
     <div class="text-sm font-medium">${label}</div></a>`
 }
+// 추천코드만 복사
 function copyCode(code) {
-  navigator.clipboard?.writeText(code)
+  copyToClipboard(code)
+  toast('추천코드가 복사되었어요! 📋', 'success')
+}
+// 추천 가입 링크 복사 (회원가입 시 추천코드 자동 기입됨)
+function copyReferralLink(code) {
   const link = location.origin + '/#/auth/register?ref=' + code
-  navigator.clipboard?.writeText(link)
-  toast('추천 가입링크가 복사되었어요! 📋', 'success')
+  copyToClipboard(link)
+  toast('추천 링크가 복사되었어요! 이 링크로 가입하면 추천코드가 자동 입력돼요 🔗', 'success')
+}
+// 클립보드 복사 (구형 브라우저/비보안 컨텍스트 폴백 포함)
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
+  } else {
+    fallbackCopy(text)
+  }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.focus(); ta.select()
+  try { document.execCommand('copy') } catch {}
+  document.body.removeChild(ta)
+}
+
+// 비밀번호 변경
+async function pagePassword() {
+  if (!Store.user) { requireLoginRedirect(); return }
+  document.getElementById('app').innerHTML = layout(`
+  <a href="#/mypage" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 마이페이지</a>
+  <div class="max-w-md mx-auto mt-3">
+    <div class="bg-white rounded-2xl border border-gray-100 p-6">
+      <h1 class="text-xl font-extrabold mb-1"><i class="fas fa-key text-brand-orange mr-1"></i> 비밀번호 변경</h1>
+      <p class="text-sm text-gray-400 mb-5">현재 비밀번호 확인 후 새 비밀번호로 변경할 수 있어요</p>
+      <form id="password-form" class="space-y-3">
+        <div><label class="block text-sm font-medium mb-1">현재 비밀번호 *</label>
+          <input name="currentPassword" type="password" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+        <div><label class="block text-sm font-medium mb-1">새 비밀번호 * <span class="text-gray-400 font-normal">(6자 이상)</span></label>
+          <input name="newPassword" type="password" required minlength="6" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+        <div><label class="block text-sm font-medium mb-1">새 비밀번호 확인 *</label>
+          <input name="newPasswordConfirm" type="password" required minlength="6" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+        <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition mt-2">변경하기</button>
+      </form>
+    </div>
+  </div>`)
+
+  document.getElementById('password-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const newPassword = fd.get('newPassword')
+    if (newPassword !== fd.get('newPasswordConfirm')) {
+      toast('새 비밀번호가 일치하지 않습니다.', 'warn'); return
+    }
+    try {
+      await api.post('/auth/change-password', { currentPassword: fd.get('currentPassword'), newPassword })
+      toast('비밀번호가 변경되었어요! 🔑', 'success')
+      Router.navigate('/mypage')
+      render()
+    } catch (err) { toast(errMsg(err), 'error') }
+  })
 }
 
 // 포인트 충전 (더미)

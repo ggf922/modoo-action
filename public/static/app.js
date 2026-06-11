@@ -2,6 +2,7 @@
 Router.add('/', pageHome)
 Router.add('/auth/login', pageLogin)
 Router.add('/auth/register', pageRegister)
+Router.add('/auth/forgot', pageForgot)
 Router.add('/products/:id', pageProduct)
 
 Router.add('/mypage', pageMypage)
@@ -10,6 +11,7 @@ Router.add('/mypage/withdraw', pageWithdraw)
 Router.add('/mypage/history', pageHistory)
 Router.add('/mypage/bids', pageBids)
 Router.add('/mypage/network', pageNetwork)
+Router.add('/mypage/password', pagePassword)
 
 Router.add('/admin', pageAdmin)
 Router.add('/admin/products', pageAdminProducts)

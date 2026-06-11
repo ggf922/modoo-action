@@ -58,8 +58,9 @@
 | 경로 | 화면 | 권한 |
 |---|---|---|
 | `#/` | 메인(진행중 경매 그리드) | Guest |
-| `#/auth/login` | 로그인 | Guest |
-| `#/auth/register` | 회원가입(추천코드) | Guest |
+| `#/auth/login` | 로그인(+비밀번호 찾기 링크) | Guest |
+| `#/auth/register` | 회원가입(추천코드 자동기입 `?ref=CODE`) | Guest |
+| `#/auth/forgot` | 비밀번호 찾기(본인확인 후 재설정) | Guest |
 | `#/products/:id` | 상품 상세 + 참여자 게이지 | Guest |
 | `#/mypage` | 마이페이지(4종 포인트 카드) | Member |
 | `#/mypage/charge` | 포인트 충전(더미 결제) | Member |
@@ -67,6 +68,7 @@
 | `#/mypage/history` | 포인트 내역(필터) | Member |
 | `#/mypage/bids` | 내 참여 내역(당첨/미당첨 탭) | Member |
 | `#/mypage/network` | 내 조직도(SVG 트리) | Member |
+| `#/mypage/password` | 비밀번호 변경 | Member |
 | `#/admin` | 관리자 대시보드(KPI+차트) | Admin |
 | `#/admin/products` | 상품 목록/순서변경(▲▼)/강제추첨/삭제 | Admin |
 | `#/admin/products/new` | 상품 등록(가격 직접입력 + 이미지 업로드) | Admin |
@@ -78,6 +80,8 @@
 
 ## 🔌 주요 API 엔드포인트
 - `POST /api/auth/register | login | logout`, `GET /api/auth/me`
+- `POST /api/auth/reset-password` (비밀번호 찾기 — 이메일/아이디+이름+휴대폰 본인확인 후 재설정)
+- `POST /api/auth/change-password` (로그인 상태에서 현재 비밀번호 확인 후 변경)
 - `GET /api/products`, `GET /api/products/:id`, `POST /api/products/:id/join`
 - `POST /api/me/charge | withdraw | bank`, `GET /api/me/history | bids | withdrawals | network`
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
@@ -94,7 +98,9 @@
 | 👑 관리자 | `admin` | `admin123` | 아이디 로그인 · 추천코드 ADMIN001 |
 | 👤 회원 | `user1@test.com` ~ `user6@test.com` | `Test1234!` | 경매 포인트 지급 |
 
-> 로그인 화면은 **이메일 또는 아이디** 입력을 받습니다(데모 계정 안내 박스 제거). 관리자는 아이디 `admin` / 비밀번호 `admin123` 으로 로그인합니다.
+> 로그인 화면은 **이메일 또는 아이디** 입력을 받습니다. 관리자는 아이디 `admin` / 비밀번호 `admin123` 으로 로그인합니다.
+>
+> ⚠️ **프로덕션에서 관리자 로그인이 안 될 때**: 프로덕션 D1에 최신 계정이 없을 수 있습니다. 마이그레이션 `0003_ensure_admin_account.sql` 이 `admin`/`admin123` 계정을 멱등(INSERT OR IGNORE)으로 보장하므로, 배포 시 `npx wrangler d1 migrations apply webapp-production` 를 실행하면 관리자 계정이 자동 생성됩니다.
 
 **추천 관계**: admin → user1 → (user2, user3), user2 → (user4, user5), user3 → user6
 **시드 상품 5개**: 갤럭시 버즈 프로 / 스타벅스 텀블러 / 다이슨 V12 / 한우 등심 / 에어팟 프로 2
@@ -128,6 +134,9 @@ npm run db:reset
 - **관리자 아이디 로그인**: 데모 계정 안내 박스 제거, 로그인 입력을 **이메일 또는 아이디**로 변경, 관리자는 **아이디 `admin` / 비밀번호 `admin123`** 으로 로그인
 - **회원 상세 보기(관리자)**: 회원 목록에 "상세" 버튼 추가 → 회원가입 시 입력한 모든 항목을 **항목별로 정리**(가입 정보: 이메일/아이디·이름·닉네임·휴대폰·내 추천코드·추천인·가입일시 / 보유 포인트: 경매P·잔액P·임금P / 출금 계좌: 은행·계좌번호·예금주) · 상세 모달에서 바로 **수정/포인트조정/삭제** 가능(관리자 계정은 삭제 버튼 숨김)
 - **상품 노출 순서 변경(관리자)**: 상품 목록의 ▲▼ 버튼으로 고객에게 보이는 노출 순서를 조정(`sortOrder` 컬럼 + 인접 상품 교환). 공개 상품 목록·관리자 목록 모두 `sortOrder ASC` 기준 정렬, 신규 상품은 맨 뒤로 자동 배치
+- **추천 링크 복사**: 마이페이지에 **"추천코드 복사"**(코드만)와 **"추천 링크 복사"**(가입 URL) 버튼을 분리. 링크(`/#/auth/register?ref=CODE`)로 가입하면 회원가입 화면의 추천코드가 **자동 기입**되고 해당 추천인이 연결됨(비보안 컨텍스트 폴백 복사 지원)
+- **비밀번호 찾기**: 로그인 화면 "비밀번호를 잊으셨나요?" → 이메일/아이디+이름+휴대폰 본인확인 후 새 비밀번호로 즉시 재설정(MVP — 이메일 발송 인프라 미구축)
+- **비밀번호 변경(마이페이지)**: `#/mypage/password` — 현재 비밀번호 확인 → 새 비밀번호(6자 이상, 기존과 동일 불가) 변경
 - 상품 등록: **시중가(취소선)·시작가 직접 입력** + 할인율 실시간 미리보기 · **참가비 시작가 자동 책정**(참가비 입력칸 제거) · **상세 이미지 로컬 업로드 + 자동 압축**(800px/JPEG 80% → Base64)
 - **참가비 = 시작가 일원화**: 상품 카드/상세/참여내역에서 별도 "참가비" 표시 제거(시작가만 노출), 경매 참여 시 차감 포인트 = 시작가. 시드 상품도 entryFee=startPrice로 정렬, 데모 회원 보유 포인트 상향(고가 상품 참여 가능)
 - **상품 이미지 800×800 정사각 통일**: 카드/상세 모두 `aspect-square`로 표시, 관리자 업로드 시 어떤 비율이든 **중앙 기준 정사각 cover 크롭 → 800×800 · JPEG 80%** 자동 변환
@@ -143,4 +152,4 @@ npm run db:reset
 ## 📦 배포 상태
 - **플랫폼**: Cloudflare Pages (배포 대기)
 - **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-11 (Batch D: 관리자 아이디 로그인 `admin`/`admin123` · 회원 상세 항목별 정리 · 상품 노출 순서 변경)
+- **최종 업데이트**: 2026-06-11 (Batch E: 추천 링크 복사 · 비밀번호 찾기 · 관리자 계정 마이그레이션 보장 · 비밀번호 변경)

@@ -59,7 +59,10 @@ async function pageLogin() {
         </div>
         <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition">로그인</button>
       </form>
-      <div class="mt-4 text-center text-sm text-gray-500">
+      <div class="mt-4 text-center text-sm">
+        <a href="#/auth/forgot" class="text-gray-500 hover:text-brand-orange">비밀번호를 잊으셨나요?</a>
+      </div>
+      <div class="mt-2 text-center text-sm text-gray-500">
         계정이 없으신가요? <a href="#/auth/register" class="text-brand-orange font-semibold">회원가입</a>
       </div>
     </div>
@@ -121,6 +124,50 @@ async function pageRegister(params, query) {
       await Store.loadMe()
       toast(`가입 완료! 내 추천코드: ${data.referralCode} 🎉`, 'success')
       Router.navigate('/mypage')
+      render()
+    } catch (err) { toast(errMsg(err), 'error') }
+  })
+}
+
+// 비밀번호 찾기 (본인 확인 후 새 비밀번호로 재설정)
+async function pageForgot() {
+  if (Store.user) { Router.navigate('/'); return }
+  document.getElementById('app').innerHTML = layout(`
+  <div class="max-w-md mx-auto mt-6">
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8">
+      <a href="#/auth/login" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 로그인</a>
+      <h1 class="text-2xl font-extrabold text-center mb-1 mt-2">비밀번호 찾기</h1>
+      <p class="text-center text-gray-400 text-sm mb-6">가입 시 입력한 정보로 본인 확인 후<br/>새 비밀번호로 재설정할 수 있어요</p>
+      <form id="forgot-form" class="space-y-3">
+        <div><label class="block text-sm font-medium mb-1">이메일 또는 아이디 *</label>
+          <input name="email" type="text" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="가입한 이메일 또는 아이디" /></div>
+        <div><label class="block text-sm font-medium mb-1">이름 *</label>
+          <input name="name" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="가입자 이름" /></div>
+        <div><label class="block text-sm font-medium mb-1">휴대폰 *</label>
+          <input name="phone" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="010-0000-0000" /></div>
+        <hr class="my-2 border-gray-100" />
+        <div><label class="block text-sm font-medium mb-1">새 비밀번호 * <span class="text-gray-400 font-normal">(6자 이상)</span></label>
+          <input name="newPassword" type="password" required minlength="6" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+        <div><label class="block text-sm font-medium mb-1">새 비밀번호 확인 *</label>
+          <input name="newPasswordConfirm" type="password" required minlength="6" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+        <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition mt-2">비밀번호 재설정</button>
+      </form>
+    </div>
+  </div>`)
+
+  document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const newPassword = fd.get('newPassword')
+    if (newPassword !== fd.get('newPasswordConfirm')) {
+      toast('새 비밀번호가 일치하지 않습니다.', 'warn'); return
+    }
+    try {
+      await api.post('/auth/reset-password', {
+        email: fd.get('email'), name: fd.get('name'), phone: fd.get('phone'), newPassword,
+      })
+      toast('비밀번호가 재설정되었어요! 새 비밀번호로 로그인하세요 🔑', 'success')
+      Router.navigate('/auth/login')
       render()
     } catch (err) { toast(errMsg(err), 'error') }
   })
