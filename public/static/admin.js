@@ -131,6 +131,15 @@ async function pageAdminProductForm(params) {
   if (id) {
     const { data } = await api.get('/admin/products/' + id)
     p = data.product
+  } else {
+    // 신규 등록: 전역 기본값(설정 페이지)을 불러와 자동 적용
+    try {
+      const { data } = await api.get('/admin/config')
+      if (data.config) {
+        p.winnersCount = data.config.defaultWinners
+        p.losingReward = data.config.defaultLosingReward
+      }
+    } catch {}
   }
   const f = (name, label, type='text', extra='') => `
     <div><label class="block text-sm font-medium mb-1">${label}</label>
@@ -164,6 +173,7 @@ async function pageAdminProductForm(params) {
         ${f('winnersCount', '당첨자수', 'number')}
         ${f('losingReward', '미당첨보상(P)', 'number')}
       </div>
+      ${!id ? '<p class="text-xs text-gray-400"><i class="fas fa-circle-info"></i> 당첨자수·미당첨보상은 <b>사이트 전역 설정</b>의 기본값이 자동 적용되었어요. 필요시 수정하세요.</p>' : ''}
       <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">${id?'수정하기':'등록하기'}</button>
     </form>`)
 
@@ -280,27 +290,96 @@ async function processWd(id, action) {
   catch (err) { toast(errMsg(err), 'error') }
 }
 
-// 사이트 설정
+// 사이트 설정 + 상품별 개별 설정
 async function pageAdminConfig() {
   if (!adminGuard()) return
   document.getElementById('app').innerHTML = renderLoading()
-  const { data } = await api.get('/admin/config')
-  const c = data.config
+  const [cfgRes, prodRes] = await Promise.all([
+    api.get('/admin/config'),
+    api.get('/admin/products'),
+  ])
+  const c = cfgRes.data.config
+  const products = prodRes.data.products
   const f = (name, label, val) => `<div><label class="block text-sm font-medium mb-1">${label}</label>
     <input name="${name}" type="number" value="${val}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>`
+
+  // 상품별 빠른 설정 행
+  const productRow = (p) => `
+    <tr class="border-t border-gray-50" data-pid="${p.id}">
+      <td class="px-3 py-3">
+        <div class="flex items-center gap-2">
+          <img src="${p.imageUrl}" class="w-10 h-10 rounded-lg object-cover" onerror="this.src='https://placehold.co/40'" />
+          <div class="min-w-0">
+            <div class="font-medium text-sm truncate max-w-[140px]">${p.title}</div>
+            <div class="text-xs text-gray-400">참여 ${p.participants}/${p.maxParticipants} · ${p.status==='OPEN'?'<span class="text-green-600">진행중</span>':'<span class="text-gray-400">마감</span>'}</div>
+          </div>
+        </div>
+      </td>
+      <td class="px-2 py-3"><input type="number" min="1" value="${p.winnersCount}" data-field="winnersCount" class="w-16 px-2 py-1.5 rounded-lg border border-gray-200 text-center text-sm outline-none focus:border-brand-orange" /></td>
+      <td class="px-2 py-3"><input type="number" min="0" value="${p.losingReward}" data-field="losingReward" class="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-center text-sm outline-none focus:border-brand-orange" /></td>
+      <td class="px-2 py-3"><input type="number" min="1" value="${p.maxParticipants}" data-field="maxParticipants" class="w-16 px-2 py-1.5 rounded-lg border border-gray-200 text-center text-sm outline-none focus:border-brand-orange" /></td>
+      <td class="px-2 py-3 text-center">
+        <button onclick="saveProductSettings('${p.id}')" class="text-xs bg-brand-orange text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"><i class="fas fa-floppy-disk"></i> 저장</button>
+      </td>
+    </tr>`
+
   document.getElementById('app').innerHTML = adminLayout('/admin/config', `
     <h2 class="font-bold text-lg mb-4">사이트 전역 설정</h2>
     <form id="config-form" class="bg-white rounded-2xl border border-gray-100 p-5 space-y-3 max-w-lg">
+      <p class="text-xs text-gray-400 -mt-1 mb-1"><i class="fas fa-circle-info"></i> 기본 당첨자수·미당첨보상은 <b>새 상품 등록 시 자동으로 채워지는 기본값</b>입니다.</p>
       ${f('defaultWinners','기본 당첨자 수', c.defaultWinners)}
       ${f('defaultLosingReward','기본 미당첨 보상(P)', c.defaultLosingReward)}
       ${f('minWithdrawAmount','최소 출금 금액(P)', c.minWithdrawAmount)}
       ${f('referralBonus','추천 가입 보너스(P)', c.referralBonus)}
-      <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">설정 저장</button>
-    </form>`)
+      <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">전역 설정 저장</button>
+    </form>
+
+    <div class="flex items-center justify-between mt-8 mb-3">
+      <h2 class="font-bold text-lg">상품별 개별 설정</h2>
+      <a href="#/admin/products/new" class="text-sm text-brand-orange font-medium"><i class="fas fa-plus"></i> 새 상품</a>
+    </div>
+    <p class="text-xs text-gray-400 mb-3"><i class="fas fa-circle-info"></i> 각 상품의 당첨자수·미당첨보상·정원을 여기서 바로 수정할 수 있어요. (상세 항목은 상품 수정에서)</p>
+    <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+      <table class="w-full text-sm min-w-[520px]">
+        <thead class="bg-gray-50 text-gray-500 text-xs">
+          <tr>
+            <th class="text-left px-3 py-2">상품</th>
+            <th class="px-2 py-2">당첨자수</th>
+            <th class="px-2 py-2">미당첨보상(P)</th>
+            <th class="px-2 py-2">정원</th>
+            <th class="px-2 py-2">저장</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${products.length ? products.map(productRow).join('') : '<tr><td colspan="5" class="text-center text-gray-400 py-8">등록된 상품이 없습니다.</td></tr>'}
+        </tbody>
+      </table>
+    </div>`)
+
   document.getElementById('config-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const payload = Object.fromEntries(new FormData(e.target).entries())
-    try { await api.put('/admin/config', payload); toast('설정이 저장되었습니다.', 'success') }
+    try { await api.put('/admin/config', payload); toast('전역 설정이 저장되었습니다.', 'success') }
     catch (err) { toast(errMsg(err), 'error') }
   })
+}
+
+// 상품별 빠른 설정 저장 (인라인)
+async function saveProductSettings(pid) {
+  const row = document.querySelector(`tr[data-pid="${pid}"]`)
+  if (!row) return
+  const get = (field) => Number(row.querySelector(`input[data-field="${field}"]`).value)
+  const payload = {
+    winnersCount: get('winnersCount'),
+    losingReward: get('losingReward'),
+    maxParticipants: get('maxParticipants'),
+  }
+  try {
+    await api.patch(`/admin/products/${pid}/settings`, payload)
+    toast('상품 설정이 저장되었습니다. ✅', 'success')
+    // 행 강조 효과
+    row.style.transition = 'background .4s'
+    row.style.background = '#FFF7ED'
+    setTimeout(() => { row.style.background = '' }, 800)
+  } catch (err) { toast(errMsg(err), 'error') }
 }

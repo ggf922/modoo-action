@@ -100,6 +100,37 @@ admin.post('/products/:id/draw', async (c) => {
   return c.json({ ok: true, ...result })
 })
 
+// 상품별 빠른 설정 (당첨자수/미당첨보상/정원만 부분 수정) — 설정 페이지용
+admin.patch('/products/:id/settings', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  if (!b) return c.json({ error: '잘못된 요청입니다.' }, 400)
+
+  const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>()
+  if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
+
+  const winnersCount = Number(b.winnersCount ?? product.winnersCount)
+  const losingReward = Number(b.losingReward ?? product.losingReward)
+  const maxParticipants = Number(b.maxParticipants ?? product.maxParticipants)
+
+  if (winnersCount < 1) return c.json({ error: '당첨자 수는 1명 이상이어야 합니다.' }, 400)
+  if (losingReward < 0) return c.json({ error: '미당첨 보상은 0 이상이어야 합니다.' }, 400)
+  if (maxParticipants < 1) return c.json({ error: '정원은 1명 이상이어야 합니다.' }, 400)
+  if (winnersCount > maxParticipants) return c.json({ error: '당첨자 수는 정원보다 클 수 없습니다.' }, 400)
+
+  // 이미 참여한 인원보다 정원을 작게 설정할 수 없음
+  const cnt = (await c.env.DB.prepare('SELECT COUNT(*) AS c FROM bids WHERE productId = ?').bind(id).first<{ c: number }>())?.c ?? 0
+  if (maxParticipants < cnt) {
+    return c.json({ error: `이미 ${cnt}명이 참여했습니다. 정원을 ${cnt}명 미만으로 줄일 수 없습니다.` }, 400)
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE products SET winnersCount = ?, losingReward = ?, maxParticipants = ? WHERE id = ?'
+  ).bind(winnersCount, losingReward, maxParticipants, id).run()
+
+  return c.json({ ok: true, winnersCount, losingReward, maxParticipants })
+})
+
 // ===== 회원 관리 =====
 admin.get('/members', async (c) => {
   const q = c.req.query('q')

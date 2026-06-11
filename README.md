@@ -78,7 +78,7 @@
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
 - `GET /api/admin/members`, `POST /api/admin/members/:id/adjust`
 - `GET /api/admin/withdrawals`, `POST /api/admin/withdrawals/:id/process`
-- `GET|PUT /api/admin/config`
+- `GET|PUT /api/admin/config`, `PATCH /api/admin/products/:id/settings` (상품별 빠른 설정)
 
 ## 🔑 데모 계정
 | 구분 | 이메일 | 비밀번호 | 비고 |
@@ -114,7 +114,8 @@ npm run db:reset
 - 경매 참여(트랜잭션) + 정원 도달 자동 추첨 + 당첨/미당첨 모달(슬롯/폭죽)
 - 마이페이지 4종 포인트 카드 · 더미 충전 · 출금 신청/계좌등록 · 포인트 내역(필터) · 참여 내역(탭)
 - 조직도 SVG 트리(본인 산하 5단계, 상위 비노출) + 노드 활동 요약 패널
-- 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정 · 출금 승인 · 전역 설정
+- 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정 · 출금 승인
+- 설정 페이지: **전역 기본값**(신규 상품 등록 시 당첨자수·미당첨보상 자동 적용) + **상품별 개별 빠른 설정 테이블**(당첨자수·미당첨보상·정원 인라인 수정)
 - Mobile First 반응형 디자인 · 한국어 UI · 오렌지/골드 테마 · Pretendard 폰트
 
 ## 📋 미구현 / 향후 과제
