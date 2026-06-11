@@ -11,4 +11,4 @@ VALUES
 INSERT OR IGNORE INTO site_config
   (id, defaultWinners, defaultLosingReward, minWithdrawAmount, referralBonus, updatedAt)
 VALUES
-  ('config-1', 1, 100, 10000, 500, datetime('now'));
+  ('config-1', 1, 100, 10000, 1000, datetime('now'));

@@ -63,7 +63,7 @@
 | `#/auth/forgot` | 비밀번호 찾기(본인확인 후 재설정) | Guest |
 | `#/products/:id` | 상품 상세 + 참여자 게이지 | Guest |
 | `#/mypage` | 마이페이지(4종 포인트 카드) | Member |
-| `#/mypage/charge` | 포인트 충전(더미 결제) | Member |
+| `#/mypage/charge` | 포인트 충전(입금계좌 안내 + 충전 요청/내역) | Member |
 | `#/mypage/withdraw` | 출금 신청 + 계좌등록 | Member |
 | `#/mypage/history` | 포인트 내역(필터) | Member |
 | `#/mypage/bids` | 내 참여 내역(당첨/미당첨 탭) | Member |
@@ -75,6 +75,7 @@
 | `#/admin/products/:id/edit` | 상품 수정 | Admin |
 | `#/admin/members` | 회원 관리(검색+상세+포인트 조정+수정/삭제) | Admin |
 | `#/admin/network` | 전체 조직도(추천인 계보도 SVG 트리) | Admin |
+| `#/admin/charges` | 충전 요청 승인/거절(포인트 지급) | Admin |
 | `#/admin/withdrawals` | 출금 승인/거절 | Admin |
 | `#/admin/config` | 사이트 전역 설정 | Admin |
 
@@ -83,7 +84,9 @@
 - `POST /api/auth/reset-password` (비밀번호 찾기 — 이메일/아이디+이름+휴대폰 본인확인 후 재설정)
 - `POST /api/auth/change-password` (로그인 상태에서 현재 비밀번호 확인 후 변경)
 - `GET /api/products`, `GET /api/products/:id`, `POST /api/products/:id/join`
-- `POST /api/me/charge | withdraw | bank`, `GET /api/me/history | bids | withdrawals | network`
+- `POST /api/me/charge`(충전 **요청** 생성 — 입금자명 필수), `GET /api/me/charge-requests`(내 충전요청 내역)
+- `POST /api/me/withdraw`(출금 — **예금주명=회원이름 일치 검증**), `POST /api/me/bank`, `GET /api/me/history | bids | withdrawals | network`
+- `GET /api/admin/charge-requests`, `POST /api/admin/charge-requests/:id/process`(승인 시 경매P 지급+내역 기록)
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
 - `POST /api/admin/products/:id/move` (상품 노출 순서 변경 — `{direction:'up'|'down'}`, 인접 상품과 sortOrder 교환)
 - `GET /api/admin/members`, `GET /api/admin/members/:id`, `POST /api/admin/members/:id/adjust`
@@ -128,7 +131,7 @@ npm run db:reset
 - 회원가입(추천코드 검증/보너스 지급, **추천코드 미입력 시 회사(관리자) 자동 추천**) · 로그인/로그아웃 · JWT 세션
 - 메인/상품카드/참여자 게이지(👤 10개 점등 + 진행바)
 - 경매 참여(트랜잭션) + 정원 도달 자동 추첨 + 당첨/미당첨 모달(슬롯/폭죽)
-- 마이페이지 4종 포인트 카드 · 더미 충전 · 출금 신청/계좌등록 · 포인트 내역(필터) · 참여 내역(탭)
+- 마이페이지 4종 포인트 카드 · **충전 요청(입금→관리자승인)** · 출금 신청/계좌등록 · 포인트 내역(필터) · 참여 내역(탭)
 - 조직도 SVG 트리(본인 산하 5단계, 상위 비노출) + 노드 활동 요약 패널
 - 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정/**정보 수정·삭제** · **전체 조직도(추천인 계보도 SVG 트리)** · 출금 승인
 - **관리자 아이디 로그인**: 데모 계정 안내 박스 제거, 로그인 입력을 **이메일 또는 아이디**로 변경, 관리자는 **아이디 `admin` / 비밀번호 `admin123`** 으로 로그인
@@ -142,14 +145,17 @@ npm run db:reset
 - **상품 이미지 800×800 정사각 통일**: 카드/상세 모두 `aspect-square`로 표시, 관리자 업로드 시 어떤 비율이든 **중앙 기준 정사각 cover 크롭 → 800×800 · JPEG 80%** 자동 변환
 - **경매 참여 즉시 차감 + 잔액 부족 안내**: 참여 시 보유 포인트에서 시작가만큼 즉시 차감(서버 트랜잭션). 잔액 부족 시 참여 버튼 클릭 단계에서 **필요/보유/부족 포인트를 표시하는 모달 + 충전하기 버튼** 노출
 - 설정 페이지: **전역 기본값**(신규 상품 등록 시 당첨자수·미당첨보상 자동 적용) + **상품별 개별 빠른 설정 테이블**(당첨자수·미당첨보상·정원 인라인 수정)
+- **포인트 충전 요청/승인 (입금 기반)**: 회원이 지정 입금계좌(**케이뱅크 100-300-095256 · 예금주 큰바구니(임몽규)**)로 입금 후 마이페이지 `#/mypage/charge`에서 금액·입금자명을 넣어 **충전 요청** → 관리자 `#/admin/charges`에서 입금 확인 후 **승인** 시 회원에게 경매 포인트 지급(+내역 기록). 요청 상태(승인 대기/충전 완료/거절) 표시. 관리자 대시보드에 **대기 충전 건수 KPI** 추가
+- **회원가입 개인정보 정책 동의**: 회원가입 폼에 `[필수] 개인정보 수집·이용 동의` 체크박스 + **정책 보기 모달**(수집항목/이용목적/보유기간/거부권리 4섹션) 추가, 미동의 시 가입 차단
+- **출금 정보 일치 검증**: 출금 신청 시 등록된 **예금주명이 회원 이름과 일치**해야 출금 가능(공백 무시 비교) — 본인 명의 계좌로만 출금하도록 강제
 - Mobile First 반응형 디자인 · 한국어 UI · 오렌지/골드 테마 · Pretendard 폰트
 
 ## 📋 미구현 / 향후 과제
-- 실제 PG 결제(현재 더미), 휴대폰 본인인증, SMS/이메일 실발송(콘솔 로그 대체), WebSocket 실시간(현재 새로고침 기반)
+- 실제 PG 결제(현재 **입금→관리자 승인** 방식), 휴대폰 본인인증, SMS/이메일 실발송(콘솔 로그 대체), WebSocket 실시간(현재 새로고침 기반)
 - 이미지 저장: 현재 **Base64 자동 압축 방식**(D1 TEXT 저장 — 데모/MVP에 최적). 대용량 운영 시 Cloudflare R2 또는 Supabase Storage 전환 권장
 - 다음 단계 권장: Cloudflare 프로덕션 배포(D1 원격 마이그레이션) → 실결제(Stripe 등) 연동 → 실시간 폴링/SSE → 이미지 오브젝트 스토리지(R2/Supabase Storage)
 
 ## 📦 배포 상태
 - **플랫폼**: Cloudflare Pages (배포 대기)
 - **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-11 (Batch E: 추천 링크 복사 · 비밀번호 찾기 · 관리자 계정 마이그레이션 보장 · 비밀번호 변경)
+- **최종 업데이트**: 2026-06-11 (Batch F: **충전 요청/승인(입금 기반)** · 추천 보너스 문구 **포인트 1,000P** · **회원가입 개인정보 정책 동의 체크** · **출금 예금주명=회원이름 일치 검증**)

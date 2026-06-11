@@ -6,23 +6,32 @@ import { genId } from '../lib/auth'
 const me = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 me.use('*', requireAuth)
 
-// 포인트 충전 (더미 결제)
+// 포인트 충전 요청 (회원이 계좌 입금 후 신청 → 관리자 승인 시 지급)
 me.post('/charge', async (c) => {
   const user = c.get('user')!
   const body = await c.req.json().catch(() => null)
   const amount = Number(body?.amount)
+  const depositor = body?.depositor ? String(body.depositor).trim() : null
   if (!amount || amount <= 0) return c.json({ error: '충전 금액을 올바르게 입력해주세요.' }, 400)
-  if (amount > 10000000) return c.json({ error: '1회 최대 충전 금액은 10,000,000P입니다.' }, 400)
+  if (amount > 10000000) return c.json({ error: '1회 최대 충전 요청 금액은 10,000,000P입니다.' }, 400)
+  if (!depositor) return c.json({ error: '입금자명을 입력해주세요.' }, 400)
 
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(amount, user.id),
-    c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-       VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), user.id, amount, `포인트 충전 (더미결제 ${amount.toLocaleString()}원)`),
-  ])
+  // PENDING 충전 요청만 생성 (실제 포인트 지급은 관리자 승인 시)
+  await c.env.DB.prepare(
+    `INSERT INTO charge_requests (id, userId, amount, depositor, status, requestedAt)
+     VALUES (?, ?, ?, ?, 'PENDING', datetime('now'))`
+  ).bind(genId('cr-'), user.id, amount, depositor).run()
 
   return c.json({ ok: true, amount })
+})
+
+// 내 충전 요청 목록
+me.get('/charge-requests', async (c) => {
+  const user = c.get('user')!
+  const rows = (await c.env.DB.prepare(
+    'SELECT * FROM charge_requests WHERE userId = ? ORDER BY requestedAt DESC LIMIT 50'
+  ).bind(user.id).all()).results
+  return c.json({ chargeRequests: rows })
 })
 
 // 포인트 내역 (필터: kind, type)
@@ -73,8 +82,14 @@ me.post('/withdraw', async (c) => {
   }
 
   // 계좌 정보 확인
-  if (!dbUser.bankName || !dbUser.bankAccount) {
-    return c.json({ error: '출금 계좌 정보를 먼저 등록해주세요.' }, 400)
+  if (!dbUser.bankName || !dbUser.bankAccount || !dbUser.accountHolder) {
+    return c.json({ error: '출금 계좌 정보(은행·계좌번호·예금주)를 먼저 등록해주세요.' }, 400)
+  }
+
+  // 회원 정보와 출금 정보 일치 검증: 예금주명이 회원 이름과 일치해야 함 (공백 제거 후 비교)
+  const norm = (s: string | null) => String(s ?? '').replace(/\s+/g, '')
+  if (norm(dbUser.accountHolder) !== norm(dbUser.name)) {
+    return c.json({ error: `출금 계좌의 예금주(${dbUser.accountHolder})가 회원 이름(${dbUser.name})과 일치하지 않습니다. 본인 명의 계좌로만 출금할 수 있습니다.` }, 400)
   }
 
   // PENDING 신청만 생성 (실제 차감은 관리자 승인 시)

@@ -236,47 +236,90 @@ async function pagePassword() {
   })
 }
 
-// 포인트 충전 (더미)
+// 입금 계좌 정보 (고정)
+const DEPOSIT_BANK = '케이뱅크'
+const DEPOSIT_ACCOUNT = '100-300-095256'
+const DEPOSIT_HOLDER = '큰바구니(임몽규)'
+
+// 포인트 충전 (계좌 입금 후 관리자 승인 방식)
 async function pageCharge() {
   if (!Store.user) { requireLoginRedirect(); return }
+  document.getElementById('app').innerHTML = renderLoading()
   await Store.loadMe()
+  const { data: crData } = await api.get('/me/charge-requests')
+
+  const badge = (s) => {
+    const map = { PENDING: ['승인 대기','bg-yellow-100 text-yellow-700'], COMPLETED: ['충전 완료','bg-green-100 text-green-700'], REJECTED: ['거절','bg-red-100 text-red-700'] }
+    const [t, cls] = map[s] || [s, 'bg-gray-100']
+    return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
+  }
+
   document.getElementById('app').innerHTML = layout(`
   <a href="#/mypage" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 마이페이지</a>
-  <div class="max-w-md mx-auto mt-3">
+  <div class="max-w-md mx-auto mt-3 space-y-4">
     <div class="bg-white rounded-2xl border border-gray-100 p-6">
       <h1 class="text-xl font-extrabold mb-1">포인트 충전</h1>
       <p class="text-sm text-gray-400 mb-4">현재 경매 포인트: <b class="text-brand-orange">${won(Store.user.auctionPoint)}P</b></p>
-      <div class="grid grid-cols-3 gap-2 mb-4">
+
+      <!-- 입금 계좌 안내 -->
+      <div class="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-4">
+        <div class="text-sm font-bold text-brand-dark mb-2"><i class="fas fa-building-columns text-brand-orange mr-1"></i> 아래 계좌로 입금해주세요</div>
+        <div class="bg-white rounded-lg p-3 text-sm space-y-1">
+          <div class="flex justify-between"><span class="text-gray-400">은행</span><span class="font-bold">${DEPOSIT_BANK}</span></div>
+          <div class="flex justify-between items-center"><span class="text-gray-400">계좌번호</span>
+            <span class="font-bold">${DEPOSIT_ACCOUNT}
+              <button onclick="copyToClipboard('${DEPOSIT_ACCOUNT.replace(/-/g,'')}');toast('계좌번호가 복사되었어요! 📋','success')" class="text-brand-orange ml-1"><i class="fas fa-copy text-xs"></i></button>
+            </span></div>
+          <div class="flex justify-between"><span class="text-gray-400">예금주</span><span class="font-bold">${DEPOSIT_HOLDER}</span></div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">입금 후 아래에서 <b>충전 요청</b>을 보내면, 관리자 확인 후 포인트가 지급돼요.</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mb-3">
         ${[5000,10000,30000,50000,100000,300000].map(v => `
           <button onclick="setCharge(${v})" class="border border-gray-200 rounded-xl py-3 text-sm font-medium hover:border-brand-orange hover:bg-orange-50 transition">${won(v)}P</button>`).join('')}
       </div>
+      <label class="block text-sm font-medium mb-1">충전 요청 금액 (입금하신 금액)</label>
       <input id="charge-amount" type="number" min="1" placeholder="직접 입력 (원)" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange outline-none mb-3" />
+      <label class="block text-sm font-medium mb-1">입금자명</label>
+      <input id="charge-depositor" type="text" value="${Store.user.name || ''}" placeholder="실제 입금하신 분의 이름" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange outline-none mb-3" />
       <button onclick="doCharge()" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">
-        <i class="fas fa-credit-card"></i> 충전하기 (더미 결제)</button>
-      <p class="text-xs text-gray-400 text-center mt-3">* 실제 결제 없이 즉시 포인트가 적립됩니다 (MVP)</p>
+        <i class="fas fa-paper-plane"></i> 충전 요청 보내기</button>
+      <p class="text-xs text-gray-400 text-center mt-3">* 관리자가 입금을 확인한 후 포인트가 지급됩니다.</p>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-100 p-5">
+      <h2 class="font-bold mb-3 text-sm">충전 요청 내역</h2>
+      ${crData.chargeRequests.length ? crData.chargeRequests.map(r => `
+        <div class="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+          <div><div class="font-semibold text-sm">${won(r.amount)}P <span class="text-xs text-gray-400">· ${r.depositor||'-'}</span></div>
+            <div class="text-xs text-gray-400">${fmtDateTime(r.requestedAt)}</div></div>
+          ${badge(r.status)}
+        </div>`).join('') : '<p class="text-sm text-gray-400 text-center py-4">충전 요청 내역이 없습니다.</p>'}
     </div>
   </div>`)
 }
 function setCharge(v) { document.getElementById('charge-amount').value = v }
 async function doCharge() {
   const amount = Number(document.getElementById('charge-amount').value)
-  if (!amount || amount <= 0) { toast('충전 금액을 입력해주세요.', 'warn'); return }
+  const depositor = document.getElementById('charge-depositor').value.trim()
+  if (!amount || amount <= 0) { toast('충전 요청 금액을 입력해주세요.', 'warn'); return }
+  if (!depositor) { toast('입금자명을 입력해주세요.', 'warn'); return }
   openModal(`<div class="p-8 text-center">
-    <div class="text-5xl mb-4">💳</div>
-    <h3 class="text-lg font-bold mb-1">${won(amount)}원 결제</h3>
-    <p class="text-sm text-gray-400 mb-6">더미 결제창입니다. 결제를 진행할까요?</p>
+    <div class="text-5xl mb-4">🏦</div>
+    <h3 class="text-lg font-bold mb-1">${won(amount)}P 충전 요청</h3>
+    <p class="text-sm text-gray-400 mb-6">입금자명 <b>${depositor}</b><br/>위 계좌로 입금을 완료하셨나요?</p>
     <div class="flex gap-2">
       <button onclick="closeModal()" class="flex-1 border border-gray-200 py-3 rounded-xl font-medium">취소</button>
-      <button onclick="confirmCharge(${amount})" class="flex-1 bg-brand-orange text-white py-3 rounded-xl font-bold">결제하기</button>
+      <button onclick="confirmCharge(${amount}, '${depositor.replace(/'/g, "\\'")}')" class="flex-1 bg-brand-orange text-white py-3 rounded-xl font-bold">요청 보내기</button>
     </div>
   </div>`)
 }
-async function confirmCharge(amount) {
+async function confirmCharge(amount, depositor) {
   try {
-    await api.post('/me/charge', { amount })
-    await Store.loadMe()
+    await api.post('/me/charge', { amount, depositor })
     closeModal()
-    toast(`${won(amount)}P 충전 완료! 🎉`, 'success')
+    toast('충전 요청이 접수되었어요! 관리자 확인 후 지급됩니다 🎉', 'success')
     pageCharge()
   } catch (err) { closeModal(); toast(errMsg(err), 'error') }
 }

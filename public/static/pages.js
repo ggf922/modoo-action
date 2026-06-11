@@ -106,7 +106,18 @@ async function pageRegister(params, query) {
           <input name="phone" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="010-0000-0000" /></div>
         <div><label class="block text-sm font-medium mb-1">추천코드 <span class="text-gray-400 font-normal">(선택)</span></label>
           <input name="referralCode" value="${refFromUrl}" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none uppercase" placeholder="USER0001" />
-          <p class="text-xs text-gray-400 mt-1">추천인에게 임금 포인트 ${won(bonus)}P가 지급돼요 🎁</p></div>
+          <p class="text-xs text-gray-400 mt-1">추천인에게 포인트 ${won(bonus)}P가 지급돼요 🎁</p></div>
+
+        <div class="bg-gray-50 rounded-xl p-3 mt-1">
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" name="privacyAgree" id="privacy-agree" class="mt-0.5 w-4 h-4 accent-brand-orange shrink-0" />
+            <span class="text-sm text-gray-600">
+              <b class="text-gray-800">[필수]</b> 개인정보 수집·이용에 동의합니다.
+              <button type="button" onclick="openPrivacyPolicy()" class="text-brand-orange underline ml-1">정책 보기</button>
+            </span>
+          </label>
+        </div>
+
         <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition mt-2">가입하기</button>
       </form>
       <div class="mt-4 text-center text-sm text-gray-500">
@@ -118,7 +129,11 @@ async function pageRegister(params, query) {
   document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const fd = new FormData(e.target)
+    if (!document.getElementById('privacy-agree').checked) {
+      toast('개인정보 수집·이용에 동의해주세요.', 'warn'); return
+    }
     const payload = Object.fromEntries(fd.entries())
+    delete payload.privacyAgree
     try {
       const { data } = await api.post('/auth/register', payload)
       await Store.loadMe()
@@ -127,6 +142,34 @@ async function pageRegister(params, query) {
       render()
     } catch (err) { toast(errMsg(err), 'error') }
   })
+}
+
+// 개인정보 처리방침 모달
+function openPrivacyPolicy() {
+  openModal(`
+  <div class="p-6 max-h-[80vh] overflow-y-auto">
+    <h3 class="text-lg font-extrabold mb-3"><i class="fas fa-shield-halved text-brand-orange mr-1"></i> 개인정보 수집·이용 동의</h3>
+    <div class="text-sm text-gray-600 space-y-3 leading-relaxed">
+      <div>
+        <p class="font-bold text-gray-800">1. 수집하는 개인정보 항목</p>
+        <p>이메일(아이디), 비밀번호, 이름, 닉네임, 휴대폰번호, 출금 계좌정보(은행·계좌번호·예금주)</p>
+      </div>
+      <div>
+        <p class="font-bold text-gray-800">2. 수집·이용 목적</p>
+        <p>회원 식별 및 관리, 경매 서비스 제공, 포인트 충전·출금 처리, 추천 보상 정산, 고객 문의 응대</p>
+      </div>
+      <div>
+        <p class="font-bold text-gray-800">3. 보유·이용 기간</p>
+        <p>회원 탈퇴 시까지 보유하며, 탈퇴 후에는 관계 법령에 따른 보존 의무가 없는 한 지체 없이 파기합니다.</p>
+      </div>
+      <div>
+        <p class="font-bold text-gray-800">4. 동의 거부 권리</p>
+        <p>귀하는 개인정보 수집·이용 동의를 거부할 권리가 있습니다. 다만 필수 항목 동의를 거부할 경우 회원가입이 제한됩니다.</p>
+      </div>
+      <p class="text-xs text-gray-400">* 본 방침은 모두모두 경매몰 MVP 데모용 약식 고지입니다.</p>
+    </div>
+    <button onclick="closeModal()" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl mt-5 hover:bg-orange-600">확인</button>
+  </div>`)
 }
 
 // 비밀번호 찾기 (본인 확인 후 새 비밀번호로 재설정)

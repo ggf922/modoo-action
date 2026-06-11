@@ -11,7 +11,7 @@ DELETE FROM site_config;
 
 -- 사이트 설정
 INSERT INTO site_config (id, defaultWinners, defaultLosingReward, minWithdrawAmount, referralBonus, updatedAt)
-VALUES ('config-1', 1, 200, 10000, 500, datetime('now'));
+VALUES ('config-1', 1, 200, 10000, 1000, datetime('now'));
 
 -- 관리자 (아이디: admin / 비밀번호: admin123)
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, bankName, bankAccount, accountHolder, createdAt, updatedAt)

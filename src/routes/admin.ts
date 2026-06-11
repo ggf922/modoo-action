@@ -16,6 +16,7 @@ admin.get('/stats', async (c) => {
   const totalBids = (await db.prepare('SELECT COUNT(*) AS c FROM bids').first<{ c: number }>())?.c ?? 0
   const totalWinners = (await db.prepare('SELECT COUNT(*) AS c FROM winners').first<{ c: number }>())?.c ?? 0
   const pendingWithdrawals = (await db.prepare("SELECT COUNT(*) AS c FROM withdrawals WHERE status='PENDING'").first<{ c: number }>())?.c ?? 0
+  const pendingCharges = (await db.prepare("SELECT COUNT(*) AS c FROM charge_requests WHERE status='PENDING'").first<{ c: number }>())?.c ?? 0
   const totalCharged = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='CHARGE'").first<{ s: number }>())?.s ?? 0
   const totalRewards = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='REWARD' AND pointKind='BALANCE'").first<{ s: number }>())?.s ?? 0
 
@@ -28,7 +29,7 @@ admin.get('/stats', async (c) => {
 
   return c.json({
     totalUsers, totalProducts, openProducts, totalBids, totalWinners,
-    pendingWithdrawals, totalCharged, totalRewards, byCategory, recentUsers,
+    pendingWithdrawals, pendingCharges, totalCharged, totalRewards, byCategory, recentUsers,
   })
 })
 
@@ -336,6 +337,43 @@ admin.get('/network', async (c) => {
   const root = all.find((u) => u.role === 'ADMIN') ?? all.find((u) => !u.referrerId) ?? all[0]
 
   return c.json({ root, members: all, summary, total: all.length })
+})
+
+// ===== 충전 요청 관리 =====
+admin.get('/charge-requests', async (c) => {
+  const rows = (await c.env.DB.prepare(
+    `SELECT cr.*, u.name, u.nickname, u.email, u.auctionPoint
+     FROM charge_requests cr JOIN users u ON u.id = cr.userId
+     ORDER BY CASE cr.status WHEN 'PENDING' THEN 0 ELSE 1 END, cr.requestedAt DESC`
+  ).all()).results
+  return c.json({ charges: rows })
+})
+
+// 충전 요청 승인(경매 포인트 지급) / 거절
+admin.post('/charge-requests/:id/process', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const action = b?.action as 'approve' | 'reject'
+
+  const cr = await c.env.DB.prepare('SELECT * FROM charge_requests WHERE id = ?').bind(id).first<any>()
+  if (!cr) return c.json({ error: '충전 요청을 찾을 수 없습니다.' }, 404)
+  if (cr.status !== 'PENDING') return c.json({ error: '이미 처리된 요청입니다.' }, 400)
+
+  if (action === 'reject') {
+    await c.env.DB.prepare("UPDATE charge_requests SET status='REJECTED', processedAt=datetime('now') WHERE id=?").bind(id).run()
+    return c.json({ ok: true, status: 'REJECTED' })
+  }
+
+  // 승인 → 경매 포인트 지급 + 내역 기록 + 요청 완료
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(cr.amount, cr.userId),
+    c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
+    ).bind(genId('ph-'), cr.userId, cr.amount, `포인트 충전 승인 (입금자: ${cr.depositor ?? '-'})`),
+    c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=?").bind(id),
+  ])
+  return c.json({ ok: true, status: 'COMPLETED' })
 })
 
 // ===== 출금 관리 =====

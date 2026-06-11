@@ -10,6 +10,7 @@ function adminLayout(active, content) {
     ['/admin', 'fa-gauge', '대시보드'],
     ['/admin/products', 'fa-box', '상품관리'],
     ['/admin/members', 'fa-users', '회원관리'],
+    ['/admin/charges', 'fa-coins', '충전관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
     ['/admin/config', 'fa-gear', '설정'],
   ]
@@ -45,6 +46,7 @@ async function pageAdmin() {
       ${kpi('fa-gavel', '#FFC107', '총 참여', data.totalBids, '회')}
       ${kpi('fa-trophy', '#FF6B35', '총 낙찰', data.totalWinners, '건')}
       ${kpi('fa-hourglass-half', '#ef4444', '대기 출금', data.pendingWithdrawals, '건')}
+      ${kpi('fa-coins', '#f59e0b', '대기 충전', data.pendingCharges, '건')}
       ${kpi('fa-credit-card', '#3b82f6', '총 충전액', data.totalCharged, 'P')}
       ${kpi('fa-gift', '#22c55e', '총 보상지급', data.totalRewards, 'P')}
     </div>
@@ -553,6 +555,38 @@ async function pageAdminWithdrawals() {
 async function processWd(id, action) {
   if (!confirm(action==='approve' ? '출금을 승인하시겠습니까? 포인트가 차감됩니다.' : '출금을 거절하시겠습니까?')) return
   try { await api.post(`/admin/withdrawals/${id}/process`, { action }); toast(action==='approve'?'승인 완료':'거절 처리됨', 'success'); pageAdminWithdrawals() }
+  catch (err) { toast(errMsg(err), 'error') }
+}
+
+// 충전 관리 (입금 → 관리자 승인)
+async function pageAdminCharges() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  const { data } = await api.get('/admin/charge-requests')
+  const badge = (s) => {
+    const map = { PENDING: ['승인 대기','bg-yellow-100 text-yellow-700'], COMPLETED: ['충전 완료','bg-green-100 text-green-700'], REJECTED: ['거절','bg-red-100 text-red-700'] }
+    const [t, cls] = map[s] || [s,'bg-gray-100']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
+  }
+  document.getElementById('app').innerHTML = adminLayout('/admin/charges', `
+    <h2 class="font-bold mb-4">충전 요청 관리 (${data.charges.length})</h2>
+    <div class="space-y-2">
+    ${data.charges.length ? data.charges.map(r => `
+      <div class="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap items-center gap-3 justify-between">
+        <div>
+          <div class="font-bold">${won(r.amount)}P 충전 요청 ${badge(r.status)}</div>
+          <div class="text-xs text-gray-400 mt-0.5">${r.name}(@${r.nickname}) · 입금자명 <b class="text-gray-600">${r.depositor||'-'}</b></div>
+          <div class="text-xs text-gray-300">요청 ${fmtDateTime(r.requestedAt)} · 보유 경매P ${won(r.auctionPoint)}</div>
+        </div>
+        ${r.status==='PENDING' ? `<div class="flex gap-2">
+          <button onclick="processCharge('${r.id}','approve')" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">승인(지급)</button>
+          <button onclick="processCharge('${r.id}','reject')" class="bg-red-50 text-red-500 px-4 py-2 rounded-xl text-sm font-medium">거절</button>
+        </div>` : `<div class="text-xs text-gray-400">${fmtDateTime(r.processedAt)} 처리</div>`}
+      </div>`).join('') : '<p class="text-center text-gray-400 py-10">충전 요청이 없습니다.</p>'}
+    </div>`)
+}
+async function processCharge(id, action) {
+  if (!confirm(action==='approve' ? '충전을 승인하시겠습니까? 회원에게 포인트가 지급됩니다.' : '충전 요청을 거절하시겠습니까?')) return
+  try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges() }
   catch (err) { toast(errMsg(err), 'error') }
 }
 
