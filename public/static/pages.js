@@ -167,7 +167,7 @@ async function pageProduct(params) {
   } else {
     actionBtn = `<button onclick="joinAuction('${p.id}', ${p.entryFee})"
       class="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition text-lg shadow-lg shadow-orange-200">
-      <i class="fas fa-gavel"></i> ${won(p.entryFee)}P로 경매 참여하기</button>`
+      <i class="fas fa-gavel"></i> ${won(p.startPrice)}P로 경매 참여하기</button>`
   }
 
   document.getElementById('app').innerHTML = layout(`
@@ -189,8 +189,7 @@ async function pageProduct(params) {
         <span class="text-gray-500 text-sm">낙찰가</span>
         <span class="text-brand-orange font-extrabold text-3xl">${won(p.startPrice)}원</span>
       </div>
-      <div class="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
-        <div class="bg-orange-50 rounded-xl py-3"><div class="text-gray-500 text-xs">참가비</div><div class="font-bold text-brand-orange">${won(p.entryFee)}P</div></div>
+      <div class="grid grid-cols-2 gap-2 mb-4 text-center text-sm">
         <div class="bg-blue-50 rounded-xl py-3"><div class="text-gray-500 text-xs">당첨</div><div class="font-bold text-blue-600">${p.winnersCount}명</div></div>
         <div class="bg-green-50 rounded-xl py-3"><div class="text-gray-500 text-xs">미당첨 보상</div><div class="font-bold text-green-600">${won(p.losingReward)}P</div></div>
       </div>

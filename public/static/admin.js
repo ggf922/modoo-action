@@ -214,7 +214,7 @@ async function pageAdminProductForm(params) {
         <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> 할인율은 시중가·시작가로 자동 계산되어 상품 카드에 <b>"○○% OFF"</b>로 표시됩니다.</p>
         <div class="mt-2 flex items-center gap-2 text-sm bg-orange-100/60 rounded-xl px-3 py-2">
           <i class="fas fa-gavel text-brand-orange"></i>
-          <span class="text-gray-600">참가비는 시작가와 동일하게 자동 책정 →</span>
+          <span class="text-gray-600">경매 참여 시 차감 포인트는 시작가와 동일합니다 →</span>
           <b id="pv-entryfee" class="text-brand-orange">- P</b>
         </div>
       </div>

@@ -118,8 +118,7 @@ function renderProductCard(p) {
         <span class="text-brand-orange font-extrabold text-xl">${won(p.startPrice)}원</span>
       </div>
       ${renderMiniGauge(p.participants || 0, p.maxParticipants)}
-      <div class="mt-3 flex items-center justify-between">
-        <span class="text-xs text-gray-400">참가비 ${won(p.entryFee)}P</span>
+      <div class="mt-3 flex items-center justify-end">
         <span class="text-sm font-bold text-white bg-brand-orange px-4 py-2 rounded-lg group-hover:bg-orange-600 transition">참여하기</span>
       </div>
     </div>

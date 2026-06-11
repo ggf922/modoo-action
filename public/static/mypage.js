@@ -315,7 +315,7 @@ async function pageBids(params, query) {
         <img src="${b.imageUrl}" class="w-20 h-20 rounded-xl object-cover" onerror="this.src='https://placehold.co/80'" />
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-2"><h3 class="font-bold text-sm truncate">${b.title}</h3>${status}</div>
-          <div class="text-xs text-gray-400 mt-1">참가비 ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
+          <div class="text-xs text-gray-400 mt-1">참여 ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
           ${b.isWinner ? `<div class="text-xs text-brand-orange font-medium mt-1">낙찰가 ${won(b.startPrice)}원에 자동구매</div>`
             : (b.productStatus==='DRAWN' ? `<div class="text-xs text-green-600 font-medium mt-1">보상 +${won(b.losingReward)}P 지급</div>` : '')}
         </div>
