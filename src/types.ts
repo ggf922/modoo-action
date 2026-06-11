@@ -49,6 +49,7 @@ export type ProductRow = {
   winnersCount: number
   losingReward: number
   status: 'OPEN' | 'CLOSED' | 'DRAWN'
+  sortOrder: number
   startAt: string
   endAt: string | null
   createdAt: string

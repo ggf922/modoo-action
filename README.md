@@ -28,7 +28,7 @@
 
 ## 🗄️ 데이터 모델 (Cloudflare D1)
 - **users**: 회원(4종 포인트, 추천관계, 계좌, role)
-- **products**: 경매 상품(시중가/시작가/참가비/정원/당첨자수/미당첨보상/상태) — `imageUrl`은 TEXT(외부 URL 또는 압축 Base64 이미지 저장)
+- **products**: 경매 상품(시중가/시작가/참가비/정원/당첨자수/미당첨보상/상태/**sortOrder**) — `imageUrl`은 TEXT(외부 URL 또는 압축 Base64 이미지 저장), `sortOrder`로 노출 순서 제어
 - **bids**: 참여(userId+productId UNIQUE, isWinner)
 - **winners**: 당첨자(낙찰가 finalPrice)
 - **point_history**: 포인트 내역(type 6종 × pointKind 3종)
@@ -68,10 +68,10 @@
 | `#/mypage/bids` | 내 참여 내역(당첨/미당첨 탭) | Member |
 | `#/mypage/network` | 내 조직도(SVG 트리) | Member |
 | `#/admin` | 관리자 대시보드(KPI+차트) | Admin |
-| `#/admin/products` | 상품 목록/강제추첨/삭제 | Admin |
+| `#/admin/products` | 상품 목록/순서변경(▲▼)/강제추첨/삭제 | Admin |
 | `#/admin/products/new` | 상품 등록(가격 직접입력 + 이미지 업로드) | Admin |
 | `#/admin/products/:id/edit` | 상품 수정 | Admin |
-| `#/admin/members` | 회원 관리(검색+포인트 조정+수정/삭제) | Admin |
+| `#/admin/members` | 회원 관리(검색+상세+포인트 조정+수정/삭제) | Admin |
 | `#/admin/network` | 전체 조직도(추천인 계보도 SVG 트리) | Admin |
 | `#/admin/withdrawals` | 출금 승인/거절 | Admin |
 | `#/admin/config` | 사이트 전역 설정 | Admin |
@@ -81,24 +81,27 @@
 - `GET /api/products`, `GET /api/products/:id`, `POST /api/products/:id/join`
 - `POST /api/me/charge | withdraw | bank`, `GET /api/me/history | bids | withdrawals | network`
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
+- `POST /api/admin/products/:id/move` (상품 노출 순서 변경 — `{direction:'up'|'down'}`, 인접 상품과 sortOrder 교환)
 - `GET /api/admin/members`, `GET /api/admin/members/:id`, `POST /api/admin/members/:id/adjust`
 - `PUT /api/admin/members/:id` (정보/추천인 수정), `DELETE /api/admin/members/:id` (삭제+하위 승계)
 - `GET /api/admin/network` (전체 조직도 — 회사 루트 추천인 계보도)
 - `GET /api/admin/withdrawals`, `POST /api/admin/withdrawals/:id/process`
 - `GET|PUT /api/admin/config`, `PATCH /api/admin/products/:id/settings` (상품별 빠른 설정)
 
-## 🔑 데모 계정
-| 구분 | 이메일 | 비밀번호 | 비고 |
+## 🔑 계정
+| 구분 | 아이디/이메일 | 비밀번호 | 비고 |
 |---|---|---|---|
-| 👑 관리자 | `admin@modoo.com` | `Admin1234!` | 추천코드 ADMIN001 |
-| 👤 회원 | `user1@test.com` ~ `user6@test.com` | `Test1234!` | 각 5,000P 지급 |
+| 👑 관리자 | `admin` | `admin123` | 아이디 로그인 · 추천코드 ADMIN001 |
+| 👤 회원 | `user1@test.com` ~ `user6@test.com` | `Test1234!` | 경매 포인트 지급 |
+
+> 로그인 화면은 **이메일 또는 아이디** 입력을 받습니다(데모 계정 안내 박스 제거). 관리자는 아이디 `admin` / 비밀번호 `admin123` 으로 로그인합니다.
 
 **추천 관계**: admin → user1 → (user2, user3), user2 → (user4, user5), user3 → user6
 **시드 상품 5개**: 갤럭시 버즈 프로 / 스타벅스 텀블러 / 다이슨 V12 / 한우 등심 / 에어팟 프로 2
 (상품1 "갤럭시 버즈 프로"에 user1~3이 사전 참여 중)
 
 ## 🎯 데모 시나리오
-1. **관리자 플로우**: admin 로그인 → `#/admin` 대시보드 → 상품 등록 → 회원 포인트 조정 → 출금 승인
+1. **관리자 플로우**: `admin`/`admin123` 로그인 → `#/admin` 대시보드 → 상품 등록 → **상품 순서 변경(▲▼)** → 회원 **상세 보기** → 정보 수정/포인트 조정/삭제 → 출금 승인
 2. **회원 플로우**: user1 로그인 → 경매 참여 → 마이페이지 4종 포인트 확인 → `#/mypage/network` 조직도 확인
 3. **자동 추첨 확인**: 정원이 작은 상품을 만들어 정원을 채우면 자동 추첨 → 당첨/미당첨 모달 연출
 
@@ -122,6 +125,9 @@ npm run db:reset
 - 마이페이지 4종 포인트 카드 · 더미 충전 · 출금 신청/계좌등록 · 포인트 내역(필터) · 참여 내역(탭)
 - 조직도 SVG 트리(본인 산하 5단계, 상위 비노출) + 노드 활동 요약 패널
 - 관리자: 대시보드(KPI+차트) · 상품 CRUD/강제추첨 · 회원 검색/포인트 조정/**정보 수정·삭제** · **전체 조직도(추천인 계보도 SVG 트리)** · 출금 승인
+- **관리자 아이디 로그인**: 데모 계정 안내 박스 제거, 로그인 입력을 **이메일 또는 아이디**로 변경, 관리자는 **아이디 `admin` / 비밀번호 `admin123`** 으로 로그인
+- **회원 상세 보기(관리자)**: 회원 목록에 "상세" 버튼 추가 → 회원가입 시 입력한 모든 항목을 **항목별로 정리**(가입 정보: 이메일/아이디·이름·닉네임·휴대폰·내 추천코드·추천인·가입일시 / 보유 포인트: 경매P·잔액P·임금P / 출금 계좌: 은행·계좌번호·예금주) · 상세 모달에서 바로 **수정/포인트조정/삭제** 가능(관리자 계정은 삭제 버튼 숨김)
+- **상품 노출 순서 변경(관리자)**: 상품 목록의 ▲▼ 버튼으로 고객에게 보이는 노출 순서를 조정(`sortOrder` 컬럼 + 인접 상품 교환). 공개 상품 목록·관리자 목록 모두 `sortOrder ASC` 기준 정렬, 신규 상품은 맨 뒤로 자동 배치
 - 상품 등록: **시중가(취소선)·시작가 직접 입력** + 할인율 실시간 미리보기 · **참가비 시작가 자동 책정**(참가비 입력칸 제거) · **상세 이미지 로컬 업로드 + 자동 압축**(800px/JPEG 80% → Base64)
 - **참가비 = 시작가 일원화**: 상품 카드/상세/참여내역에서 별도 "참가비" 표시 제거(시작가만 노출), 경매 참여 시 차감 포인트 = 시작가. 시드 상품도 entryFee=startPrice로 정렬, 데모 회원 보유 포인트 상향(고가 상품 참여 가능)
 - **상품 이미지 800×800 정사각 통일**: 카드/상세 모두 `aspect-square`로 표시, 관리자 업로드 시 어떤 비율이든 **중앙 기준 정사각 cover 크롭 → 800×800 · JPEG 80%** 자동 변환
@@ -137,4 +143,4 @@ npm run db:reset
 ## 📦 배포 상태
 - **플랫폼**: Cloudflare Pages (배포 대기)
 - **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-11
+- **최종 업데이트**: 2026-06-11 (Batch D: 관리자 아이디 로그인 `admin`/`admin123` · 회원 상세 항목별 정리 · 상품 노출 순서 변경)

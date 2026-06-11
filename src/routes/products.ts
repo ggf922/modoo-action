@@ -16,7 +16,7 @@ products.get('/', async (c) => {
     sql += ' WHERE p.status = ?'
     binds.push(status)
   }
-  sql += ' ORDER BY p.createdAt DESC'
+  sql += ' ORDER BY p.sortOrder ASC, p.createdAt DESC'
   const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
   return c.json({ products: rows })
 })

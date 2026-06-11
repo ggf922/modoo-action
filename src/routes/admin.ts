@@ -36,7 +36,7 @@ admin.get('/stats', async (c) => {
 admin.get('/products', async (c) => {
   const rows = (await c.env.DB.prepare(
     `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.productId=p.id) AS participants
-     FROM products p ORDER BY p.createdAt DESC`
+     FROM products p ORDER BY p.sortOrder ASC, p.createdAt DESC`
   ).all()).results
   return c.json({ products: rows })
 })
@@ -55,13 +55,16 @@ admin.post('/products', async (c) => {
   // 참가비는 시작가와 동일하게 자동 설정
   const entryFee = sp
   const id = genId('p-')
+  // 새 상품은 목록 맨 뒤로 (현재 최대 sortOrder + 1)
+  const maxOrder = (await c.env.DB.prepare('SELECT COALESCE(MAX(sortOrder), -1) AS m FROM products').first<{ m: number }>())?.m ?? -1
   await c.env.DB.prepare(
-    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, startAt, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', datetime('now'), datetime('now'))`
+    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, startAt, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, datetime('now'), datetime('now'))`
   ).bind(
     id, b.title, b.description ?? '', b.imageUrl, b.category,
     mp, sp, entryFee,
-    Number(b.maxParticipants ?? 10), Number(b.winnersCount ?? 1), Number(b.losingReward ?? 200)
+    Number(b.maxParticipants ?? 10), Number(b.winnersCount ?? 1), Number(b.losingReward ?? 200),
+    maxOrder + 1
   ).run()
   return c.json({ ok: true, id })
 })
@@ -101,6 +104,51 @@ admin.delete('/products/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id),
   ])
   return c.json({ ok: true })
+})
+
+// 상품 노출 순서 변경 (인접 상품과 sortOrder 교환)
+admin.post('/products/:id/move', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const dir = b?.direction as 'up' | 'down'
+  if (dir !== 'up' && dir !== 'down') return c.json({ error: 'direction은 up 또는 down이어야 합니다.' }, 400)
+
+  const cur = await c.env.DB.prepare('SELECT id, sortOrder, createdAt FROM products WHERE id = ?').bind(id).first<{ id: string; sortOrder: number; createdAt: string }>()
+  if (!cur) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
+
+  // 정렬 기준: sortOrder ASC, createdAt DESC (목록과 동일)
+  // up = 더 앞으로(작은 sortOrder), down = 더 뒤로(큰 sortOrder)
+  let neighbor
+  if (dir === 'up') {
+    neighbor = await c.env.DB.prepare(
+      `SELECT id, sortOrder FROM products
+       WHERE (sortOrder < ?) OR (sortOrder = ? AND createdAt > ?)
+       ORDER BY sortOrder DESC, createdAt ASC LIMIT 1`
+    ).bind(cur.sortOrder, cur.sortOrder, cur.createdAt).first<{ id: string; sortOrder: number }>()
+  } else {
+    neighbor = await c.env.DB.prepare(
+      `SELECT id, sortOrder FROM products
+       WHERE (sortOrder > ?) OR (sortOrder = ? AND createdAt < ?)
+       ORDER BY sortOrder ASC, createdAt DESC LIMIT 1`
+    ).bind(cur.sortOrder, cur.sortOrder, cur.createdAt).first<{ id: string; sortOrder: number }>()
+  }
+
+  if (!neighbor) return c.json({ ok: true, moved: false, message: '더 이상 이동할 수 없습니다.' })
+
+  // sortOrder가 같을 경우(초기값 동일) 교환만으로는 순서가 안 바뀌므로 보정
+  let curOrder = cur.sortOrder
+  let neighborOrder = neighbor.sortOrder
+  if (curOrder === neighborOrder) {
+    if (dir === 'up') { curOrder = neighborOrder - 1 } else { curOrder = neighborOrder + 1 }
+    await c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(curOrder, cur.id).run()
+    return c.json({ ok: true, moved: true })
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(neighborOrder, cur.id),
+    c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(curOrder, neighbor.id),
+  ])
+  return c.json({ ok: true, moved: true })
 })
 
 // 수동 강제 추첨 (정원 미달이어도 관리자가 마감 가능)

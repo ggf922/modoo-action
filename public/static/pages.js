@@ -50,8 +50,8 @@ async function pageLogin() {
       <p class="text-center text-gray-400 text-sm mb-6">모두모두 🎁 에 오신 걸 환영해요</p>
       <form id="login-form" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium mb-1">이메일</label>
-          <input name="email" type="email" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="admin@modoo.com" />
+          <label class="block text-sm font-medium mb-1">이메일 또는 아이디</label>
+          <input name="email" type="text" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="이메일 또는 아이디 입력" />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">비밀번호</label>
@@ -61,11 +61,6 @@ async function pageLogin() {
       </form>
       <div class="mt-4 text-center text-sm text-gray-500">
         계정이 없으신가요? <a href="#/auth/register" class="text-brand-orange font-semibold">회원가입</a>
-      </div>
-      <div class="mt-6 bg-orange-50 rounded-xl p-4 text-xs text-gray-600 space-y-1">
-        <div class="font-bold text-brand-orange mb-1">🔑 데모 계정</div>
-        <button onclick="fillLogin('admin@modoo.com','Admin1234!')" class="block hover:underline">👑 관리자: admin@modoo.com / Admin1234!</button>
-        <button onclick="fillLogin('user1@test.com','Test1234!')" class="block hover:underline">👤 회원: user1@test.com / Test1234!</button>
       </div>
     </div>
   </div>`)
@@ -82,11 +77,6 @@ async function pageLogin() {
     } catch (err) { toast(errMsg(err), 'error') }
   })
 }
-function fillLogin(email, pw) {
-  document.querySelector('#login-form [name=email]').value = email
-  document.querySelector('#login-form [name=password]').value = pw
-}
-
 // 회원가입
 async function pageRegister(params, query) {
   if (Store.user) { Router.navigate('/'); return }

@@ -95,9 +95,15 @@ async function pageAdminProducts() {
       <h2 class="font-bold">상품 목록 (${data.products.length})</h2>
       <a href="#/admin/products/new" class="bg-brand-orange text-white px-4 py-2 rounded-xl font-semibold text-sm"><i class="fas fa-plus"></i> 상품 등록</a>
     </div>
+    <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info"></i> 위/아래 화살표로 고객에게 노출되는 상품 순서를 변경할 수 있어요.</p>
     <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-50">
-      ${data.products.map(p => `
+      ${data.products.map((p, i) => `
         <div class="flex items-center gap-3 p-3">
+          <div class="flex flex-col gap-0.5">
+            <button onclick="moveProduct('${p.id}','up')" ${i===0?'disabled':''} class="w-7 h-7 rounded-lg flex items-center justify-center ${i===0?'text-gray-200 cursor-not-allowed':'bg-gray-100 text-gray-600 hover:bg-brand-orange/10 hover:text-brand-orange'}" title="위로"><i class="fas fa-chevron-up text-xs"></i></button>
+            <button onclick="moveProduct('${p.id}','down')" ${i===data.products.length-1?'disabled':''} class="w-7 h-7 rounded-lg flex items-center justify-center ${i===data.products.length-1?'text-gray-200 cursor-not-allowed':'bg-gray-100 text-gray-600 hover:bg-brand-orange/10 hover:text-brand-orange'}" title="아래로"><i class="fas fa-chevron-down text-xs"></i></button>
+          </div>
+          <span class="text-xs font-bold text-gray-300 w-5 text-center">${i+1}</span>
           <img src="${p.imageUrl}" class="w-14 h-14 rounded-xl object-cover" onerror="this.src='https://placehold.co/56'" />
           <div class="flex-1 min-w-0">
             <div class="font-bold text-sm truncate">${p.title}</div>
@@ -111,6 +117,13 @@ async function pageAdminProducts() {
           </div>
         </div>`).join('')}
     </div>`)
+}
+async function moveProduct(id, direction) {
+  try {
+    const { data } = await api.post(`/admin/products/${id}/move`, { direction })
+    if (data.moved === false) { toast(data.message || '더 이상 이동할 수 없습니다.', 'info'); return }
+    await pageAdminProducts()
+  } catch (err) { toast(errMsg(err), 'error') }
 }
 async function adminDraw(id) {
   if (!confirm('지금 추첨하시겠습니까? (정원 미달이어도 진행됩니다)')) return
@@ -356,6 +369,7 @@ async function pageAdminMembers(params, query) {
           <td class="px-3 py-2 text-center font-medium text-blue-600">${won(m.wagePoint)}</td>
           <td class="px-3 py-2">
             <div class="flex gap-1 justify-center whitespace-nowrap">
+              <button onclick="openMemberDetail('${m.id}')" class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-id-card"></i> 상세</button>
               <button onclick="openAdjust('${m.id}','${m.nickname}')" class="text-xs bg-orange-50 text-brand-orange px-2 py-1 rounded-lg font-medium">조정</button>
               <button onclick="openMemberEdit('${m.id}')" class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-pen"></i></button>
               ${m.role==='ADMIN' ? '' : `<button onclick="deleteMember('${m.id}','${m.nickname}')" class="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-lg font-medium"><i class="fas fa-trash"></i></button>`}
@@ -372,6 +386,62 @@ async function pageAdminMembers(params, query) {
   })
 }
 
+// 회원 상세 정보 (가입 시 입력 항목 전체를 항목별로 정리)
+async function openMemberDetail(userId) {
+  let m
+  try { m = (await api.get('/admin/members/' + userId)).data.member }
+  catch (err) { toast(errMsg(err), 'error'); return }
+
+  const fmtDateTime = (s) => { try { return new Date(s).toLocaleString('ko-KR') } catch { return s || '-' } }
+  const row = (label, value, icon) =>
+    `<div class="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
+       <div class="w-28 shrink-0 text-xs text-gray-400 flex items-center gap-1.5"><i class="fas ${icon} text-gray-300"></i> ${label}</div>
+       <div class="flex-1 text-sm font-medium text-gray-700 break-all">${value ?? '-'}</div>
+     </div>`
+  const isAdmin = m.role === 'ADMIN'
+
+  openModal(`<div class="p-6 max-h-[80vh] overflow-y-auto">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-12 h-12 rounded-full bg-gradient-to-br from-brand-orange to-brand-gold flex items-center justify-center text-white text-xl font-bold shrink-0">${(m.name||'?').charAt(0)}</div>
+      <div>
+        <h3 class="font-extrabold text-lg leading-tight">${m.name} ${isAdmin?'<span class="text-xs bg-brand-dark text-white px-1.5 py-0.5 rounded align-middle">관리자</span>':''}</h3>
+        <p class="text-sm text-gray-400">@${m.nickname}</p>
+      </div>
+    </div>
+
+    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 mt-2">가입 정보</div>
+    <div class="bg-gray-50 rounded-xl px-4 py-1 mb-4">
+      ${row('이메일/아이디', m.email, 'fa-envelope')}
+      ${row('이름', m.name, 'fa-user')}
+      ${row('닉네임', '@' + m.nickname, 'fa-at')}
+      ${row('휴대폰', m.phone || '<span class="text-gray-300">미입력</span>', 'fa-phone')}
+      ${row('내 추천코드', '<span class="font-mono">' + m.referralCode + '</span>', 'fa-ticket')}
+      ${row('추천인', m.referrerNickname ? `@${m.referrerNickname} (${m.referrerName||''})` : '<span class="text-gray-300">없음</span>', 'fa-user-plus')}
+      ${row('가입일시', fmtDateTime(m.createdAt), 'fa-calendar')}
+    </div>
+
+    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">보유 포인트</div>
+    <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+      <div class="bg-orange-50 rounded-xl py-2.5"><div class="text-xs text-gray-400">경매P</div><div class="font-bold text-brand-orange">${won(m.auctionPoint)}</div></div>
+      <div class="bg-green-50 rounded-xl py-2.5"><div class="text-xs text-gray-400">잔액P</div><div class="font-bold text-green-600">${won(m.balancePoint)}</div></div>
+      <div class="bg-blue-50 rounded-xl py-2.5"><div class="text-xs text-gray-400">임금P</div><div class="font-bold text-blue-600">${won(m.wagePoint)}</div></div>
+    </div>
+
+    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">출금 계좌</div>
+    <div class="bg-gray-50 rounded-xl px-4 py-1 mb-5">
+      ${row('은행', m.bankName || '<span class="text-gray-300">미등록</span>', 'fa-building-columns')}
+      ${row('계좌번호', m.bankAccount || '<span class="text-gray-300">미등록</span>', 'fa-money-check')}
+      ${row('예금주', m.accountHolder || '<span class="text-gray-300">미등록</span>', 'fa-id-badge')}
+    </div>
+
+    <div class="flex gap-2">
+      <button onclick="closeModal();openMemberEdit('${m.id}')" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-pen"></i> 수정</button>
+      <button onclick="closeModal();openAdjust('${m.id}','${m.nickname}')" class="flex-1 bg-orange-50 text-brand-orange py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-coins"></i> 포인트 조정</button>
+      ${isAdmin ? '' : `<button onclick="closeModal();deleteMember('${m.id}','${m.nickname}')" class="flex-1 bg-red-50 text-red-500 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-trash"></i> 삭제</button>`}
+    </div>
+  </div>`)
+}
+
 // 회원 정보 수정 모달
 async function openMemberEdit(userId) {
   let m
@@ -385,8 +455,8 @@ async function openMemberEdit(userId) {
         <input id="me-name" value="${m.name||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">닉네임</label>
         <input id="me-nickname" value="${m.nickname||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
-      <div><label class="block text-xs font-medium text-gray-500 mb-1">이메일</label>
-        <input id="me-email" type="email" value="${m.email||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">이메일/아이디</label>
+        <input id="me-email" type="text" value="${m.email||''}" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">연락처</label>
         <input id="me-phone" value="${m.phone||''}" placeholder="010-0000-0000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">추천인 코드 <span class="text-gray-300">(현재: ${m.referrerNickname ? '@'+m.referrerNickname : '없음'})</span></label>
