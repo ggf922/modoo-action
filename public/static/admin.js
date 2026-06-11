@@ -168,8 +168,8 @@ async function pageAdminProductForm(params) {
             </label>
             <div id="img-info" class="text-xs text-gray-400 mt-2 leading-relaxed">
               JPG · PNG · WebP 지원<br/>
-              업로드 시 <b>가로 800px · 품질 80%</b>로 자동 압축됩니다.<br/>
-              권장: <b>600×600 정사각형</b>, 200KB 이하
+              업로드 시 <b>800 × 800 정사각형 · 품질 80%</b>로 자동 변환됩니다.<br/>
+              어떤 비율의 이미지든 <b>중앙 기준 정사각 크롭</b> 후 800×800으로 맞춰져요.
             </div>
           </div>
         </div>
@@ -256,21 +256,26 @@ function handleProductImage(input) {
   // 원본이 너무 크면 경고 (압축은 하지만 메모리 보호)
   if (file.size > 15 * 1024 * 1024) { toast('15MB 이하 이미지를 올려주세요.', 'warn'); return }
 
-  const MAX_W = 800       // 최대 가로 800px
+  const SIZE = 800        // 최종 800×800 정사각형
   const QUALITY = 0.8     // JPEG 품질 80%
   const reader = new FileReader()
   reader.onload = (ev) => {
     const img = new Image()
     img.onload = () => {
-      // 비율 유지 리사이즈
-      let w = img.width, h = img.height
-      if (w > MAX_W) { h = Math.round(h * (MAX_W / w)); w = MAX_W }
+      // 800×800 정사각 캔버스 — 원본을 비율 유지하며 중앙 기준 cover 크롭
       const canvas = document.createElement('canvas')
-      canvas.width = w; canvas.height = h
+      canvas.width = SIZE; canvas.height = SIZE
       const ctx = canvas.getContext('2d')
       ctx.fillStyle = '#ffffff' // 투명 PNG → 흰 배경
-      ctx.fillRect(0, 0, w, h)
-      ctx.drawImage(img, 0, 0, w, h)
+      ctx.fillRect(0, 0, SIZE, SIZE)
+
+      const iw = img.width, ih = img.height
+      // 짧은 변을 기준으로 정사각 영역을 잘라 800×800에 꽉 채움(cover)
+      const side = Math.min(iw, ih)
+      const sx = Math.round((iw - side) / 2)
+      const sy = Math.round((ih - side) / 2)
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE)
+
       const dataUrl = canvas.toDataURL('image/jpeg', QUALITY)
 
       // hidden input에 저장 + 미리보기 갱신
@@ -281,9 +286,9 @@ function handleProductImage(input) {
       // 용량 표시
       const kb = Math.round((dataUrl.length * 3 / 4) / 1024)
       const info = document.getElementById('img-info')
-      const warn = kb > 250 ? ' <span class="text-amber-600">(권장 250KB 초과 — 더 작은 이미지를 권장)</span>' : ' <span class="text-green-600">✓ 최적화됨</span>'
-      info.innerHTML = `압축 결과: <b>${w}×${h}px · 약 ${kb}KB</b>${warn}<br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
-      toast('이미지가 자동 압축되어 적용되었어요. ✅', 'success')
+      const warn = kb > 300 ? ' <span class="text-amber-600">(권장 300KB 초과 — 더 작은 이미지를 권장)</span>' : ' <span class="text-green-600">✓ 최적화됨</span>'
+      info.innerHTML = `변환 결과: <b>800×800px · 약 ${kb}KB</b>${warn}<br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
+      toast('이미지가 800×800으로 변환되어 적용되었어요. ✅', 'success')
     }
     img.onerror = () => toast('이미지를 읽을 수 없어요.', 'error')
     img.src = ev.target.result

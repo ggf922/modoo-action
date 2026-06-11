@@ -74,12 +74,3 @@ INSERT INTO point_history (id, userId, type, pointKind, amount, description, cre
  ('ph-j1', 'u-user1', 'USE', 'AUCTION', -50000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-2 hours')),
  ('ph-j2', 'u-user2', 'USE', 'AUCTION', -50000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-1 hours')),
  ('ph-j3', 'u-user3', 'USE', 'AUCTION', -50000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-30 minutes'));
-
--- 사전 참여한 회원의 auctionPoint 차감 반영 (5000 - 1000 = 4000)
-UPDATE users SET auctionPoint = 4000 WHERE id IN ('u-user1','u-user2','u-user3');
-
--- 사전 참여 포인트 사용 내역
-INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt) VALUES
- ('ph-u1', 'u-user1', 'USE', 'AUCTION', -1000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-2 hours')),
- ('ph-u2', 'u-user2', 'USE', 'AUCTION', -1000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-1 hours')),
- ('ph-u3', 'u-user3', 'USE', 'AUCTION', -1000, '경매 참여: 삼성 갤럭시 버즈 프로', datetime('now','-30 minutes'));

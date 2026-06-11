@@ -1,15 +1,32 @@
 // ===== 경매 참여 + 당첨 결과 모달 =====
 async function joinAuction(productId, entryFee) {
   if (!Store.user) { requireLoginRedirect(); return }
-  if ((Store.user.auctionPoint ?? 0) < entryFee) {
-    toast('경매 참여 포인트가 부족해요. 충전 후 참여해주세요!', 'warn')
-    setTimeout(() => Router.navigate('/mypage/charge'), 800)
+
+  // 잔액(경매 참여 포인트) 부족 시 → 명확한 안내 모달 (부족 금액 + 현재 잔액 + 충전 유도)
+  const balance = Store.user.auctionPoint ?? 0
+  if (balance < entryFee) {
+    const shortage = entryFee - balance
+    openModal(`<div class="p-7 text-center">
+      <div class="text-5xl mb-3">😢</div>
+      <h3 class="text-lg font-extrabold mb-1 text-red-500">잔액 포인트가 부족합니다</h3>
+      <p class="text-sm text-gray-500 mb-4">경매에 참여하려면 포인트를 충전해주세요.</p>
+      <div class="bg-gray-50 rounded-xl p-4 text-sm space-y-2 mb-5 text-left">
+        <div class="flex justify-between"><span class="text-gray-500">필요 포인트</span><b class="text-brand-dark">${won(entryFee)}P</b></div>
+        <div class="flex justify-between"><span class="text-gray-500">보유 포인트</span><b class="text-brand-dark">${won(balance)}P</b></div>
+        <div class="border-t border-gray-200 pt-2 flex justify-between"><span class="text-gray-600 font-medium">부족 포인트</span><b class="text-red-500">${won(shortage)}P</b></div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">닫기</button>
+        <button onclick="closeModal();Router.navigate('/mypage/charge')" class="flex-1 bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600"><i class="fas fa-bolt"></i> 충전하기</button>
+      </div>
+    </div>`)
     return
   }
 
   openModal(`<div class="p-8 text-center">
     <div class="text-5xl mb-4" style="animation:spin360 1s ease infinite"><i class="fas fa-gavel text-brand-orange"></i></div>
     <p class="font-bold">경매 참여 처리 중...</p>
+    <p class="text-sm text-gray-400 mt-1">${won(entryFee)}P가 차감됩니다</p>
   </div>`, { dismissable: false })
 
   try {
@@ -22,7 +39,11 @@ async function joinAuction(productId, entryFee) {
         <div class="text-6xl mb-4 animate-pop">✅</div>
         <h3 class="text-xl font-extrabold mb-2">참여 완료!</h3>
         <p class="text-gray-500 mb-1">현재 <b class="text-brand-orange">${data.participants}명</b>이 참여 중이에요.</p>
-        <p class="text-sm text-gray-400 mb-6">정원이 모두 차면 자동으로 추첨됩니다 🎲</p>
+        <p class="text-sm text-gray-400 mb-3">정원이 모두 차면 자동으로 추첨됩니다 🎲</p>
+        <div class="bg-orange-50 rounded-xl p-3 text-sm mb-5 flex items-center justify-between">
+          <span class="text-gray-500"><i class="fas fa-minus-circle text-brand-orange"></i> 차감 포인트</span>
+          <span><b class="text-brand-orange">${won(entryFee)}P</b> <span class="text-gray-400">→ 잔액 ${won(Store.user.auctionPoint ?? 0)}P</span></span>
+        </div>
         <button onclick="closeModal();render()" class="w-full bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">확인</button>
       </div>`)
     }

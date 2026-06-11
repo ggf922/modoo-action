@@ -174,8 +174,8 @@ async function pageProduct(params) {
   <a href="#/" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 목록으로</a>
   <div class="grid lg:grid-cols-2 gap-6 mt-3">
     <div>
-      <div class="relative rounded-2xl overflow-hidden bg-gray-100 aspect-[4/3]">
-        <img src="${p.imageUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/600x450/FF6B35/fff?text=모두모두'" />
+      <div class="relative rounded-2xl overflow-hidden bg-gray-100 aspect-square max-w-[800px] mx-auto">
+        <img src="${p.imageUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/800x800/FF6B35/fff?text=모두모두'" />
         <span class="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow">${discount}% OFF</span>
       </div>
     </div>

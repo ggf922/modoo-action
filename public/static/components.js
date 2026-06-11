@@ -100,9 +100,9 @@ function renderProductCard(p) {
   const isDrawn = p.status === 'DRAWN'
   return `
   <a href="#/products/${p.id}" class="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block">
-    <div class="relative aspect-[4/3] overflow-hidden bg-gray-100">
+    <div class="relative aspect-square overflow-hidden bg-gray-100">
       <img src="${p.imageUrl}" alt="${p.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"
-           onerror="this.src='https://placehold.co/600x450/FF6B35/fff?text=모두모두'" />
+           onerror="this.src='https://placehold.co/800x800/FF6B35/fff?text=모두모두'" />
       <span class="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">${discount}% OFF</span>
       ${isDrawn ? '<span class="absolute top-3 right-3 bg-brand-dark text-white text-xs font-bold px-2.5 py-1 rounded-full">추첨완료</span>'
                 : '<span class="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">진행중</span>'}
