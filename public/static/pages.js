@@ -11,6 +11,16 @@ async function pageHome() {
 
   const hero = `
   <section id="hero" class="relative rounded-3xl overflow-hidden mb-8 bg-gradient-to-br from-brand-orange to-red-500 text-white p-8 sm:p-12">
+    <div id="hero-external-links" class="relative z-20 flex flex-wrap gap-2 mb-5 sm:mb-0 sm:absolute sm:top-6 sm:right-6 sm:justify-end">
+      <a href="https://modoomodoo.com/" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center gap-1.5 bg-white text-brand-orange font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-orange-50 transition whitespace-nowrap">
+        <i class="fas fa-store"></i> 모두모두 쇼핑몰
+      </a>
+      <a href="https://www.all-live.shop/pages/1770343374069" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center gap-1.5 bg-brand-dark text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-black transition whitespace-nowrap">
+        <i class="fas fa-bag-shopping"></i> 브랜드 몰
+      </a>
+    </div>
     <div class="relative z-10 max-w-2xl">
       <span class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-sm font-medium mb-3">🌍 세계 최초 전원 수익형 경매</span>
       <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight mb-3">모두가 이익을 보는<br/>공동 구매 경매 쇼핑몰, 모두모두 🎁</h1>
