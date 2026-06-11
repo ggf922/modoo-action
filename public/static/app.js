@@ -20,6 +20,7 @@ Router.add('/admin/products/:id/edit', pageAdminProductForm)
 Router.add('/admin/members', pageAdminMembers)
 Router.add('/admin/network', pageAdminNetwork)
 Router.add('/admin/charges', pageAdminCharges)
+Router.add('/admin/shipments', pageAdminShipments)
 Router.add('/admin/withdrawals', pageAdminWithdrawals)
 Router.add('/admin/config', pageAdminConfig)
 

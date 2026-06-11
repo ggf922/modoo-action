@@ -444,15 +444,111 @@ async function pageBids(params, query) {
       const status = b.productStatus === 'OPEN' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">진행중</span>'
         : b.isWinner ? '<span class="text-xs bg-brand-gold/30 text-yellow-800 px-2 py-0.5 rounded-full font-bold">🏆 당첨</span>'
         : '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">미당첨</span>'
-      return `<a href="#/products/${b.productId}" class="bg-white rounded-2xl border border-gray-100 p-3 flex gap-3 hover:shadow-md transition">
-        <img src="${b.imageUrl}" class="w-20 h-20 rounded-xl object-cover" onerror="this.src='https://placehold.co/80'" />
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2"><h3 class="font-bold text-sm truncate">${b.title}</h3>${status}</div>
-          <div class="text-xs text-gray-400 mt-1">참여 ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
-          ${b.isWinner ? `<div class="text-xs text-brand-orange font-medium mt-1">낙찰가 ${won(b.startPrice)}원에 자동구매</div>`
-            : (b.productStatus==='DRAWN' ? `<div class="text-xs text-green-600 font-medium mt-1">보상 +${won(b.losingReward)}P 지급</div>` : '')}
-        </div>
-      </a>`
+      // 당첨 시 배송 상태 뱃지/버튼
+      let shipRow = ''
+      if (b.isWinner && b.winnerId) {
+        const ss = b.shippingStatus || 'PENDING'
+        const shipBadge = {
+          PENDING: '<span class="text-xs text-red-500 font-bold">📦 배송정보 미입력</span>',
+          SUBMITTED: '<span class="text-xs text-blue-600 font-medium">📦 배송정보 입력완료</span>',
+          SHIPPED: '<span class="text-xs text-green-600 font-medium">🚚 발송됨</span>',
+          DELIVERED: '<span class="text-xs text-green-700 font-medium">✅ 배송완료</span>',
+        }[ss] || ''
+        const canEdit = ss === 'PENDING' || ss === 'SUBMITTED'
+        const btnLabel = ss === 'PENDING' ? '배송정보 입력' : '배송정보 보기/수정'
+        shipRow = `<div class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-50">
+          ${shipBadge}
+          ${canEdit
+            ? `<button onclick='openShipping(${JSON.stringify(b).replace(/'/g, "&#39;")})' class="text-xs ${ss==='PENDING'?'bg-brand-orange text-white':'bg-gray-100 text-gray-700'} px-3 py-1.5 rounded-lg font-bold whitespace-nowrap"><i class="fas fa-truck mr-1"></i>${btnLabel}</button>`
+            : `<button onclick='openShipping(${JSON.stringify(b).replace(/'/g, "&#39;")})' class="text-xs bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">배송정보 보기</button>`}
+        </div>`
+      }
+      return `<div class="bg-white rounded-2xl border border-gray-100 p-3">
+        <a href="#/products/${b.productId}" class="flex gap-3 hover:opacity-90 transition">
+          <img src="${b.imageUrl}" class="w-20 h-20 rounded-xl object-cover" onerror="this.src='https://placehold.co/80'" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2"><h3 class="font-bold text-sm truncate">${b.title}</h3>${status}</div>
+            <div class="text-xs text-gray-400 mt-1">참여 ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
+            ${b.isWinner ? `<div class="text-xs text-brand-orange font-medium mt-1">낙찰가 ${won(b.startPrice)}원에 자동구매</div>`
+              : (b.productStatus==='DRAWN' ? `<div class="text-xs text-green-600 font-medium mt-1">보상 +${won(b.losingReward)}P 지급</div>` : '')}
+          </div>
+        </a>
+        ${shipRow}
+      </div>`
     }).join('') : '<p class="text-center text-gray-400 py-10 sm:col-span-2">참여 내역이 없습니다.</p>'}
   </div>`)
+}
+
+// 당첨 상품 배송정보 입력 모달 (당첨 제품 반품 불가 안내 포함)
+function openShipping(b) {
+  const ss = b.shippingStatus || 'PENDING'
+  const readonly = ss === 'SHIPPED' || ss === 'DELIVERED'
+  const u = Store.user || {}
+  openModal(`
+    <div class="text-center mb-4">
+      <div class="text-3xl mb-2">🎁</div>
+      <h3 class="text-lg font-extrabold">배송 정보 입력</h3>
+      <p class="text-sm text-gray-500 mt-1 truncate">${b.title}</p>
+    </div>
+
+    <!-- 반품 불가 안내 (필수 고지) -->
+    <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex gap-2">
+      <i class="fas fa-triangle-exclamation text-red-500 mt-0.5"></i>
+      <p class="text-xs text-red-600 leading-relaxed">
+        <b>[반품 불가]</b> 본 상품은 경매 낙찰로 자동 구매된 당첨 상품으로,
+        <b>단순 변심·주문 착오 등 어떠한 사유로도 반품·교환·환불이 불가능</b>합니다.
+        배송 정보를 정확히 확인 후 신청해 주세요.
+      </p>
+    </div>
+
+    <form id="shipping-form" class="space-y-3 text-left">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-sm font-medium mb-1">받는 분 *</label>
+          <input name="recipientName" value="${b.recipientName || u.name || ''}" ${readonly?'disabled':''} required
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+        <div><label class="block text-sm font-medium mb-1">연락처 *</label>
+          <input name="recipientPhone" value="${b.recipientPhone || u.phone || ''}" ${readonly?'disabled':''} required placeholder="010-0000-0000"
+            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+      </div>
+      <div><label class="block text-sm font-medium mb-1">우편번호</label>
+        <input name="postalCode" value="${b.postalCode || ''}" ${readonly?'disabled':''} placeholder="12345"
+          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+      <div><label class="block text-sm font-medium mb-1">주소 *</label>
+        <input name="address1" value="${b.address1 || ''}" ${readonly?'disabled':''} required placeholder="도로명/지번 주소"
+          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+      <div><label class="block text-sm font-medium mb-1">상세 주소</label>
+        <input name="address2" value="${b.address2 || ''}" ${readonly?'disabled':''} placeholder="101동 1004호"
+          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+      <div><label class="block text-sm font-medium mb-1">배송 메모</label>
+        <textarea name="deliveryMemo" ${readonly?'disabled':''} rows="2" placeholder="부재 시 경비실에 맡겨 주세요."
+          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange resize-none disabled:bg-gray-50">${b.deliveryMemo || ''}</textarea></div>
+
+      ${readonly
+        ? `<div class="text-center text-sm text-gray-400 py-1"><i class="fas fa-lock mr-1"></i>이미 발송 처리되어 수정할 수 없습니다.</div>`
+        : `<label class="flex items-start gap-2 cursor-pointer bg-gray-50 rounded-xl p-3">
+            <input type="checkbox" id="ship-agree" class="mt-0.5 w-4 h-4 accent-brand-orange shrink-0" />
+            <span class="text-sm text-gray-600"><b class="text-gray-800">[필수]</b> 위 <b class="text-red-500">반품 불가</b> 안내를 확인했으며, 배송 정보 제출에 동의합니다.</span>
+          </label>
+          <div class="flex gap-2 pt-1">
+            <button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl">취소</button>
+            <button type="submit" class="flex-1 bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">배송정보 저장</button>
+          </div>`}
+    </form>
+  `)
+
+  if (readonly) return
+  document.getElementById('shipping-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    if (!document.getElementById('ship-agree').checked) {
+      toast('반품 불가 안내 확인 및 동의가 필요합니다.', 'warn'); return
+    }
+    const fd = new FormData(e.target)
+    const payload = Object.fromEntries(fd.entries())
+    try {
+      await api.post(`/me/winners/${b.winnerId}/shipping`, payload)
+      closeModal()
+      toast('배송 정보가 저장되었어요! 🚚', 'success')
+      pageBids({}, getQuery())
+    } catch (err) { toast(errMsg(err), 'error') }
+  })
 }

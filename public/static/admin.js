@@ -11,6 +11,7 @@ function adminLayout(active, content) {
     ['/admin/products', 'fa-box', '상품관리'],
     ['/admin/members', 'fa-users', '회원관리'],
     ['/admin/charges', 'fa-coins', '충전관리'],
+    ['/admin/shipments', 'fa-truck-fast', '배송관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
     ['/admin/config', 'fa-gear', '설정'],
   ]
@@ -47,6 +48,7 @@ async function pageAdmin() {
       ${kpi('fa-trophy', '#FF6B35', '총 낙찰', data.totalWinners, '건')}
       ${kpi('fa-hourglass-half', '#ef4444', '대기 출금', data.pendingWithdrawals, '건')}
       ${kpi('fa-coins', '#f59e0b', '대기 충전', data.pendingCharges, '건')}
+      ${kpi('fa-truck-fast', '#8b5cf6', '발송 대기', data.pendingShipments, '건')}
       ${kpi('fa-credit-card', '#3b82f6', '총 충전액', data.totalCharged, 'P')}
       ${kpi('fa-gift', '#22c55e', '총 보상지급', data.totalRewards, 'P')}
     </div>
@@ -590,6 +592,56 @@ async function processCharge(id, action) {
   catch (err) { toast(errMsg(err), 'error') }
 }
 
+// 배송 관리 (당첨 상품 배송)
+async function pageAdminShipments() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  const { data } = await api.get('/admin/shipments')
+  const badge = (s) => {
+    const map = {
+      PENDING: ['배송정보 미입력','bg-red-100 text-red-600'],
+      SUBMITTED: ['입력완료(발송대기)','bg-blue-100 text-blue-700'],
+      SHIPPED: ['발송됨','bg-green-100 text-green-700'],
+      DELIVERED: ['배송완료','bg-gray-100 text-gray-600'],
+    }
+    const [t, cls] = map[s] || [s,'bg-gray-100']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
+  }
+  document.getElementById('app').innerHTML = adminLayout('/admin/shipments', `
+    <h2 class="font-bold mb-1">당첨 상품 배송 관리 (${data.shipments.length})</h2>
+    <p class="text-xs text-gray-400 mb-4"><i class="fas fa-circle-info"></i> 회원이 배송정보를 입력하면 <b>발송대기</b>로 표시됩니다. 발송 처리 후에는 회원이 정보를 수정할 수 없습니다. (당첨 상품은 반품 불가)</p>
+    <div class="space-y-2">
+    ${data.shipments.length ? data.shipments.map(s => {
+      const hasAddr = s.shippingStatus !== 'PENDING'
+      return `<div class="bg-white rounded-2xl border border-gray-100 p-4">
+        <div class="flex items-start gap-3">
+          <img src="${s.imageUrl}" class="w-14 h-14 rounded-xl object-cover" onerror="this.src='https://placehold.co/56'" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="font-bold text-sm truncate">${s.title}</div>${badge(s.shippingStatus)}
+            </div>
+            <div class="text-xs text-gray-400 mt-0.5">${s.memberName}(@${s.nickname}) · 낙찰가 ${won(s.startPrice)}원 · ${fmtDateTime(s.drawnAt)}</div>
+            ${hasAddr ? `<div class="text-xs text-gray-600 mt-2 bg-gray-50 rounded-lg p-2 space-y-0.5">
+              <div><b>받는분</b> ${s.recipientName || '-'} · ${s.recipientPhone || '-'}</div>
+              <div><b>주소</b> ${s.postalCode ? '('+s.postalCode+') ' : ''}${s.address1 || '-'} ${s.address2 || ''}</div>
+              ${s.deliveryMemo ? `<div><b>메모</b> ${s.deliveryMemo}</div>` : ''}
+            </div>` : `<div class="text-xs text-red-400 mt-2">회원이 아직 배송정보를 입력하지 않았습니다.</div>`}
+          </div>
+        </div>
+        ${hasAddr ? `<div class="flex gap-2 mt-3 justify-end">
+          ${s.shippingStatus === 'SUBMITTED' ? `<button onclick="setShipStatus('${s.id}','SHIPPED')" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">🚚 발송 처리</button>` : ''}
+          ${s.shippingStatus === 'SHIPPED' ? `<button onclick="setShipStatus('${s.id}','DELIVERED')" class="bg-brand-dark text-white px-4 py-2 rounded-xl text-sm font-bold">✅ 배송완료</button>` : ''}
+        </div>` : ''}
+      </div>`
+    }).join('') : '<p class="text-center text-gray-400 py-10">당첨 상품이 없습니다.</p>'}
+    </div>`)
+}
+async function setShipStatus(id, status) {
+  const labels = { SHIPPED: '발송 처리', DELIVERED: '배송완료 처리' }
+  if (!confirm(`${labels[status]} 하시겠습니까?`)) return
+  try { await api.post(`/admin/shipments/${id}/status`, { status }); toast('처리되었습니다.', 'success'); pageAdminShipments() }
+  catch (err) { toast(errMsg(err), 'error') }
+}
+
 // 사이트 설정 + 상품별 개별 설정
 async function pageAdminConfig() {
   if (!adminGuard()) return
@@ -705,27 +757,8 @@ async function pageAdminNetwork() {
   }
 
   const NODE_W = 158, NODE_H = 70, H_GAP = 26, V_GAP = 76
-  const positions = {}
-  let leafX = 0
-  function computeLayout(id, depth) {
-    const children = byParent[id] || []
-    if (children.length === 0) {
-      const x = leafX * (NODE_W + H_GAP)
-      positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
-      leafX++
-      return x
-    }
-    const childXs = children.map(ch => computeLayout(ch.id, depth + 1))
-    const x = (Math.min(...childXs) + Math.max(...childXs)) / 2
-    positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
-    return x
-  }
-  computeLayout(root.id, 0)
-
-  const maxX = Math.max(...Object.values(positions).map(p => p.x)) + NODE_W
-  const maxY = Math.max(...Object.values(positions).map(p => p.y)) + NODE_H
-  const svgW = Math.max(maxX + 20, 320)
-  const svgH = maxY + 20
+  // 서브트리 폭 기반 레이아웃 — 회원/추천인이 많아져도 노드가 겹치지 않음
+  const { positions, svgW, svgH } = buildTreeLayout(root.id, byParent, { NODE_W, NODE_H, H_GAP, V_GAP })
 
   // 엣지
   let edges = ''

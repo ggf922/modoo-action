@@ -76,6 +76,7 @@
 | `#/admin/members` | 회원 관리(검색+상세+포인트 조정+수정/삭제) | Admin |
 | `#/admin/network` | 전체 조직도(추천인 계보도 SVG 트리) | Admin |
 | `#/admin/charges` | 충전 요청 승인/거절(포인트 지급) | Admin |
+| `#/admin/shipments` | 당첨 상품 배송관리(주소 확인/발송 처리) | Admin |
 | `#/admin/withdrawals` | 출금 승인/거절 | Admin |
 | `#/admin/config` | 사이트 전역 설정 | Admin |
 
@@ -87,6 +88,8 @@
 - `POST /api/me/charge`(충전 **요청** 생성 — 입금자명 필수), `GET /api/me/charge-requests`(내 충전요청 내역)
 - `POST /api/me/withdraw`(출금 — **예금주명=회원이름 일치 검증**), `POST /api/me/bank`, `GET /api/me/history | bids | withdrawals | network`
 - `GET /api/admin/charge-requests`, `POST /api/admin/charge-requests/:id/process`(승인 시 경매P 지급+내역 기록)
+- `POST /api/me/winners/:id/shipping`(당첨 상품 배송정보 입력/수정 — 반품불가 동의 필수)
+- `GET /api/admin/shipments`, `POST /api/admin/shipments/:id/status`(발송/배송완료 처리)
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
 - `POST /api/admin/products/:id/move` (상품 노출 순서 변경 — `{direction:'up'|'down'}`, 인접 상품과 sortOrder 교환)
 - `GET /api/admin/members`, `GET /api/admin/members/:id`, `POST /api/admin/members/:id/adjust`
@@ -148,6 +151,8 @@ npm run db:reset
 - **포인트 충전 요청/승인 (입금 기반)**: 회원이 지정 입금계좌(**케이뱅크 100-300-095256 · 예금주 큰바구니(임몽규)**)로 입금 후 마이페이지 `#/mypage/charge`에서 금액·입금자명을 넣어 **충전 요청** → 관리자 `#/admin/charges`에서 입금 확인 후 **승인** 시 회원에게 경매 포인트 지급(+내역 기록). 요청 상태(승인 대기/충전 완료/거절) 표시. 관리자 대시보드에 **대기 충전 건수 KPI** 추가
 - **회원가입 개인정보 정책 동의**: 회원가입 폼에 `[필수] 개인정보 수집·이용 동의` 체크박스 + **정책 보기 모달**(수집항목/이용목적/보유기간/거부권리 4섹션) 추가, 미동의 시 가입 차단
 - **출금 정보 일치 검증**: 출금 신청 시 등록된 **예금주명이 회원 이름과 일치**해야 출금 가능(공백 무시 비교) — 본인 명의 계좌로만 출금하도록 강제
+- **당첨 상품 배송정보 입력**: 내 참여내역(`#/mypage/bids`)의 🏆당첨 항목에 **배송정보 입력** 버튼 → 받는분/연락처/우편번호/주소/상세주소/배송메모 입력 모달. 입력 전 **[반품 불가] 안내를 반드시 표시**(단순 변심·주문착오 등 어떠한 사유로도 반품·교환·환불 불가) + 확인 체크 동의 후 제출. 배송 상태(미입력/입력완료/발송됨/배송완료) 표시, 관리자 **배송관리 탭**에서 주소 확인 후 발송·배송완료 처리(발송 후 회원 수정 차단). 대시보드 **발송 대기 KPI** 추가
+- **조직도 겹침 방지(서브트리 폭 기반 레이아웃)**: 회원마이페이지/관리자 조직도 SVG 트리를 공통 `buildTreeLayout()` 로 교체. 각 서브트리가 차지하는 가로 폭(leaf 수 기준)을 먼저 계산해 형제 서브트리를 나란히 배치 → **추천인·회원 수가 많아져도 노드가 절대 서로 겹치지 않음**(같은 depth 내 최소 간격 ≥ NODE_W 보장)
 - Mobile First 반응형 디자인 · 한국어 UI · 오렌지/골드 테마 · Pretendard 폰트
 
 ## 📋 미구현 / 향후 과제
@@ -158,4 +163,4 @@ npm run db:reset
 ## 📦 배포 상태
 - **플랫폼**: Cloudflare Pages (배포 대기)
 - **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-11 (Batch F: **충전 요청/승인(입금 기반)** · 추천 보너스 문구 **포인트 1,000P** · **회원가입 개인정보 정책 동의 체크** · **출금 예금주명=회원이름 일치 검증**)
+- **최종 업데이트**: 2026-06-11 (Batch G: **당첨 상품 배송정보 입력 + 반품불가 고지 + 관리자 배송관리** · **조직도 겹침 방지(서브트리 폭 기반 레이아웃)**) / Batch F: 충전 요청·승인 · 포인트 1,000P · 개인정보 동의 · 출금 예금주명 검증

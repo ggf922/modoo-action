@@ -168,3 +168,44 @@ function requireLoginRedirect() {
   toast('로그인이 필요합니다.', 'warn')
   Router.navigate('/auth/login')
 }
+
+// ===== 조직도 트리 레이아웃 (서브트리 폭 기반 — 노드/추천인 수가 많아도 절대 겹치지 않음) =====
+// rootId 부터 byParent[parentId] = [children...] 를 따라가며 각 노드의 {x,y,depth} 좌표 계산.
+// 핵심: 각 서브트리가 차지하는 가로 폭(leaf 수 기준)을 먼저 구하고, 형제 서브트리를
+// 폭만큼 좌→우로 나란히 배치 → 부모는 자식 묶음의 중앙. 어떤 트리 모양에서도 충돌 없음.
+function buildTreeLayout(rootId, byParent, opts) {
+  const NODE_W = opts.NODE_W, NODE_H = opts.NODE_H
+  const H_GAP = opts.H_GAP, V_GAP = opts.V_GAP
+  const stepX = NODE_W + H_GAP            // leaf 한 칸이 차지하는 가로 간격
+  const positions = {}
+  let cursor = 0                          // 다음 leaf 가 놓일 칸 인덱스
+
+  // 재귀: 노드 서브트리를 배치하고, 그 노드의 가로 중심 칸(centerSlot)을 반환
+  function place(id, depth) {
+    const children = byParent[id] || []
+    let centerSlot
+    if (children.length === 0) {
+      centerSlot = cursor
+      cursor += 1                         // leaf 는 한 칸 점유
+    } else {
+      const childSlots = children.map(ch => place(ch.id, depth + 1))
+      // 부모는 첫/마지막 자식 중심의 평균(자식 묶음 중앙)
+      centerSlot = (childSlots[0] + childSlots[childSlots.length - 1]) / 2
+    }
+    positions[id] = {
+      x: centerSlot * stepX,
+      y: depth * (NODE_H + V_GAP),
+      depth,
+    }
+    return centerSlot
+  }
+  place(rootId, 0)
+
+  const xs = Object.values(positions).map(p => p.x)
+  const ys = Object.values(positions).map(p => p.y)
+  const maxX = (xs.length ? Math.max(...xs) : 0) + NODE_W
+  const maxY = (ys.length ? Math.max(...ys) : 0) + NODE_H
+  const svgW = Math.max(maxX + 20, 320)
+  const svgH = maxY + 20
+  return { positions, svgW, svgH }
+}

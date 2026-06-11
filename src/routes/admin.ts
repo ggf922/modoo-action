@@ -17,6 +17,7 @@ admin.get('/stats', async (c) => {
   const totalWinners = (await db.prepare('SELECT COUNT(*) AS c FROM winners').first<{ c: number }>())?.c ?? 0
   const pendingWithdrawals = (await db.prepare("SELECT COUNT(*) AS c FROM withdrawals WHERE status='PENDING'").first<{ c: number }>())?.c ?? 0
   const pendingCharges = (await db.prepare("SELECT COUNT(*) AS c FROM charge_requests WHERE status='PENDING'").first<{ c: number }>())?.c ?? 0
+  const pendingShipments = (await db.prepare("SELECT COUNT(*) AS c FROM winners WHERE shippingStatus IN ('SUBMITTED')").first<{ c: number }>())?.c ?? 0
   const totalCharged = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='CHARGE'").first<{ s: number }>())?.s ?? 0
   const totalRewards = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='REWARD' AND pointKind='BALANCE'").first<{ s: number }>())?.s ?? 0
 
@@ -29,7 +30,7 @@ admin.get('/stats', async (c) => {
 
   return c.json({
     totalUsers, totalProducts, openProducts, totalBids, totalWinners,
-    pendingWithdrawals, pendingCharges, totalCharged, totalRewards, byCategory, recentUsers,
+    pendingWithdrawals, pendingCharges, pendingShipments, totalCharged, totalRewards, byCategory, recentUsers,
   })
 })
 
@@ -374,6 +375,40 @@ admin.post('/charge-requests/:id/process', async (c) => {
     c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=?").bind(id),
   ])
   return c.json({ ok: true, status: 'COMPLETED' })
+})
+
+// ===== 배송(당첨 상품) 관리 =====
+admin.get('/shipments', async (c) => {
+  const rows = (await c.env.DB.prepare(
+    `SELECT w.*, u.name AS memberName, u.nickname, u.phone AS memberPhone,
+            p.title, p.imageUrl, p.startPrice
+     FROM winners w
+     JOIN users u ON u.id = w.userId
+     JOIN products p ON p.id = w.productId
+     ORDER BY CASE w.shippingStatus
+                WHEN 'SUBMITTED' THEN 0 WHEN 'PENDING' THEN 1
+                WHEN 'SHIPPED' THEN 2 ELSE 3 END,
+              w.drawnAt DESC`
+  ).all()).results
+  return c.json({ shipments: rows })
+})
+
+// 배송 상태 변경 (발송/배송완료 처리)
+admin.post('/shipments/:id/status', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const status = b?.status as string
+  const allowed = ['PENDING', 'SUBMITTED', 'SHIPPED', 'DELIVERED']
+  if (!allowed.includes(status)) return c.json({ error: '잘못된 배송 상태입니다.' }, 400)
+
+  const w = await c.env.DB.prepare('SELECT * FROM winners WHERE id = ?').bind(id).first<any>()
+  if (!w) return c.json({ error: '당첨 내역을 찾을 수 없습니다.' }, 404)
+  if ((status === 'SHIPPED' || status === 'DELIVERED') && w.shippingStatus === 'PENDING') {
+    return c.json({ error: '회원이 배송 정보를 입력해야 발송 처리할 수 있습니다.' }, 400)
+  }
+
+  await c.env.DB.prepare('UPDATE winners SET shippingStatus = ? WHERE id = ?').bind(status, id).run()
+  return c.json({ ok: true, status })
 })
 
 // ===== 출금 관리 =====

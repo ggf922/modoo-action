@@ -9,31 +9,11 @@ async function pageNetwork() {
   const byParent = {}
   nodes.forEach(n => { (byParent[n.referrerId] = byParent[n.referrerId] || []).push(n) })
 
-  // 레벨별 레이아웃 계산
+  // 레벨별 레이아웃 계산 (서브트리 폭 기반 — 겹침 없음)
   const NODE_W = 150, NODE_H = 64, H_GAP = 24, V_GAP = 70
-  const positions = {}
-  let leafX = 0
-
-  function computeLayout(id, depth) {
-    const children = byParent[id] || []
-    if (children.length === 0) {
-      const x = leafX * (NODE_W + H_GAP)
-      positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
-      leafX++
-      return x
-    }
-    const childXs = children.map(ch => computeLayout(ch.id, depth + 1))
-    const x = (Math.min(...childXs) + Math.max(...childXs)) / 2
-    positions[id] = { x, y: depth * (NODE_H + V_GAP), depth }
-    return x
-  }
-  computeLayout(root.id, 0)
+  const { positions, svgW, svgH } = buildTreeLayout(root.id, byParent, { NODE_W, NODE_H, H_GAP, V_GAP })
 
   const allNodes = [{ ...root, level: 0 }, ...nodes]
-  const maxX = Math.max(...Object.values(positions).map(p => p.x)) + NODE_W
-  const maxY = Math.max(...Object.values(positions).map(p => p.y)) + NODE_H
-  const svgW = Math.max(maxX + 20, 320)
-  const svgH = maxY + 20
 
   // 엣지(연결선)
   let edges = ''
