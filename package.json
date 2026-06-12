@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo 'Vercel builds api/ automatically' && tsc --noEmit",
+    "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
     "deploy": "vercel --prod"
   },
@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "esbuild": "^0.28.1",
     "typescript": "^5.7.0",
     "vercel": "^39.0.0"
   }

@@ -41,3 +41,6 @@ dist/
 .vercel
 .env.local
 .env*.local
+
+# esbuild 빌드 산출물 (Vercel 빌드 시 npm run build 로 생성)
+/api/index.js

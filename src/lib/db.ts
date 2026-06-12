@@ -75,6 +75,11 @@ export interface D1Result<T = any> {
 let _sql: ReturnType<typeof postgres> | null = null
 function getSql(connectionString: string) {
   if (_sql) return _sql
+  if (!connectionString) {
+    // DB 미사용 경로(정적 SPA 셸 등)는 여기까지 오지 않는다.
+    // 실제 쿼리가 필요한 시점에 URL 이 없으면 의미 있는 에러를 던진다.
+    throw new Error('DATABASE_URL 환경변수가 설정되지 않았습니다. (Vercel → Settings → Environment Variables)')
+  }
   _sql = postgres(connectionString, {
     max: 1,                 // 서버리스: 함수당 연결 1개 (Supabase Pooler가 풀링 담당)
     idle_timeout: 20,
@@ -123,9 +128,11 @@ export class PreparedStatement {
 
 /** D1Database 호환 객체 */
 export class PgDatabase {
-  private sql: ReturnType<typeof postgres>
-  constructor(connectionString: string) {
-    this.sql = getSql(connectionString)
+  // 연결 문자열만 보관하고, 실제 sql 클라이언트는 첫 쿼리 시점에 lazy 하게 생성한다.
+  constructor(private connectionString: string) {}
+
+  private get sql(): ReturnType<typeof postgres> {
+    return getSql(this.connectionString)
   }
 
   prepare(query: string): PreparedStatement {
@@ -146,11 +153,10 @@ export class PgDatabase {
   }
 }
 
-/** 환경변수(DATABASE_URL)로 D1 호환 DB 인스턴스 생성 */
+/** 환경변수(DATABASE_URL)로 D1 호환 DB 인스턴스 생성
+ *  URL 이 비어 있어도 여기서 throw 하지 않는다(정적 SPA 셸 등 DB 미사용 경로 허용).
+ *  실제 쿼리 시점(getSql)에 URL 이 없으면 의미 있는 에러를 던진다. */
 export function createDb(connectionString: string): PgDatabase {
-  if (!connectionString) {
-    throw new Error('DATABASE_URL 환경변수가 설정되지 않았습니다.')
-  }
   return new PgDatabase(connectionString)
 }
 

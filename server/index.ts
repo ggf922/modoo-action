@@ -10,6 +10,9 @@ export const config = {
 }
 
 // postgres.js 클라이언트는 createDb 내부(모듈 스코프)에 캐시되어 콜드스타트 간 재사용된다.
+// DB 인스턴스는 실제 사용 시점까지 lazy 하게 생성한다.
+// (DATABASE_URL 미설정이라도 정적 SPA 셸 등 DB 미사용 경로는 정상 응답해야 하므로
+//  여기서 즉시 throw 하지 않는다. 실제 쿼리 시점에 connect 가 실패하면 그때 에러가 난다.)
 let _db: ReturnType<typeof createDb> | null = null
 function getEnv() {
   if (!_db) {
