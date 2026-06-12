@@ -115,9 +115,9 @@ me.post('/withdraw', async (c) => {
     return c.json({ error: `최소 출금 금액은 ${minAmount.toLocaleString()}P입니다.` }, 400)
   }
 
-  const withdrawable = dbUser.wagePoint
+  const withdrawable = dbUser.auctionPoint
   if (amount > withdrawable) {
-    return c.json({ error: `출금 가능 포인트(임금P)가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
+    return c.json({ error: `출금 가능 경매포인트가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
   }
 
   // 계좌 정보 확인

@@ -53,23 +53,37 @@ async function pageAdmin() {
       ${kpi('fa-credit-card', '#3b82f6', '총 충전액', data.totalCharged, 'P')}
       ${kpi('fa-gift', '#22c55e', '총 보상지급', data.totalRewards, 'P')}
     </div>
-    <div class="grid lg:grid-cols-2 gap-4">
+    <div class="grid lg:grid-cols-2 gap-4 mb-4">
+      <div class="bg-white rounded-2xl border border-gray-100 p-5">
+        <h3 class="font-bold mb-3 text-sm">상품별 경매 참여 횟수</h3>
+        <canvas id="chart-product-bids" height="220"></canvas>
+      </div>
       <div class="bg-white rounded-2xl border border-gray-100 p-5">
         <h3 class="font-bold mb-3 text-sm">카테고리별 상품</h3>
-        <canvas id="chart-category" height="200"></canvas>
+        <canvas id="chart-category" height="220"></canvas>
       </div>
-      <div class="bg-white rounded-2xl border border-gray-100 p-5">
-        <h3 class="font-bold mb-3 text-sm">일별 신규 가입 (최근 7일)</h3>
-        <canvas id="chart-users" height="200"></canvas>
-      </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 p-5">
+      <h3 class="font-bold mb-3 text-sm">일별 신규 가입 (최근 7일)</h3>
+      <canvas id="chart-users" height="120"></canvas>
     </div>`)
 
   await loadChartJs()
+  // 상품별 경매 참여(입찰) 횟수 — 가로 막대 (참여 많은 순)
+  const pbData = data.byProductBids || []
+  new Chart(document.getElementById('chart-product-bids'), {
+    type: 'bar',
+    data: { labels: pbData.map(p => p.title), datasets: [{ label: '참여 횟수', data: pbData.map(p => p.cnt),
+      backgroundColor: '#FF6B35', borderRadius: 6 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+  })
+  // 카테고리별 상품 — 도넛 (고정 6종)
   const catData = data.byCategory
   new Chart(document.getElementById('chart-category'), {
     type: 'doughnut',
     data: { labels: catData.map(c => c.category), datasets: [{ data: catData.map(c => c.cnt),
-      backgroundColor: ['#FF6B35','#FFC107','#3b82f6','#22c55e','#ef4444','#a855f7'] }] },
+      backgroundColor: ['#FF6B35','#22c55e','#ec4899','#3b82f6','#FFC107','#94a3b8'] }] },
     options: { plugins: { legend: { position: 'bottom' } } }
   })
   const uData = [...data.recentUsers].reverse()
@@ -348,24 +362,23 @@ async function pageAdminMembers(params, query) {
   const q = query.q || ''
   const { data } = await api.get('/admin/members' + (q ? '?q=' + encodeURIComponent(q) : ''))
   document.getElementById('app').innerHTML = adminLayout('/admin/members', `
-    <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
-      <div>
-        <h2 class="font-bold">회원 목록 (${data.members.length})</h2>
-        <p class="text-xs text-gray-400 mt-0.5">아이디/이름/닉네임으로 검색 후 <b class="text-brand-orange">포인트발송</b> 버튼으로 개별 포인트를 보낼 수 있습니다.</p>
-      </div>
-      <div class="flex gap-2 items-center">
-        <a href="#/admin/network" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-sitemap"></i> 조직도 보기</a>
-        <form id="member-search" class="flex gap-2">
-          <input name="q" value="${q}" placeholder="아이디/이름/닉네임 검색" class="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
-          <button class="bg-brand-dark text-white px-3 py-2 rounded-xl text-sm"><i class="fas fa-search"></i></button>
-        </form>
-      </div>
+    <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+      <h2 class="font-bold">회원 목록 (${data.members.length})</h2>
+      <a href="#/admin/network" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-sitemap"></i> 조직도 보기</a>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-4">
+      <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info text-brand-orange"></i> 아이디/이름/닉네임으로 검색 후 <b class="text-brand-orange">포인트발송</b> 버튼으로 개별 경매P를 보낼 수 있습니다. (회수 시 음수 입력)</p>
+      <form id="member-search" class="flex gap-2 w-full">
+        <input name="q" value="${q}" placeholder="아이디 · 이름 · 닉네임으로 검색" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
+        <button type="submit" class="bg-brand-orange text-white px-5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-search"></i> 검색</button>
+        ${q ? `<a href="#/admin/members" class="bg-gray-100 text-gray-500 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap flex items-center">초기화</a>` : ''}
+      </form>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
       <table class="w-full text-sm min-w-[640px]">
         <thead class="bg-gray-50 text-gray-500 text-xs"><tr>
           <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">등급</th><th class="px-3 py-2">추천인</th>
-          <th class="px-3 py-2">경매P</th><th class="px-3 py-2">임금P</th><th class="px-3 py-2">관리</th>
+          <th class="px-3 py-2">경매P</th><th class="px-3 py-2">관리</th>
         </tr></thead>
         <tbody class="divide-y divide-gray-50">
         ${data.members.map(m => `<tr>
@@ -377,7 +390,6 @@ async function pageAdminMembers(params, query) {
             </select>`}</td>
           <td class="px-3 py-2 text-center text-xs text-gray-500">${m.referrerNickname || '-'}</td>
           <td class="px-3 py-2 text-center font-medium text-brand-orange">${won(m.auctionPoint)}</td>
-          <td class="px-3 py-2 text-center font-medium text-blue-600">${won(m.wagePoint)}</td>
           <td class="px-3 py-2">
             <div class="flex gap-1 justify-center whitespace-nowrap">
               <button onclick="openMemberDetail('${m.id}')" class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-id-card"></i> 상세</button>
@@ -465,9 +477,8 @@ async function openMemberDetail(userId) {
     </div>
 
     <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">보유 포인트</div>
-    <div class="grid grid-cols-3 gap-2 mb-4 text-center">
-      <div class="bg-orange-50 rounded-xl py-2.5"><div class="text-xs text-gray-400">경매P</div><div class="font-bold text-brand-orange">${won(m.auctionPoint)}</div></div>
-      <div class="bg-blue-50 rounded-xl py-2.5"><div class="text-xs text-gray-400">임금P</div><div class="font-bold text-blue-600">${won(m.wagePoint)}</div></div>
+    <div class="grid grid-cols-1 gap-2 mb-4 text-center">
+      <div class="bg-orange-50 rounded-xl py-3"><div class="text-xs text-gray-400">경매포인트</div><div class="font-bold text-brand-orange text-lg">${won(m.auctionPoint)} P</div></div>
     </div>
 
     <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">출금 계좌</div>
@@ -542,11 +553,7 @@ function openAdjust(userId, nickname) {
     <h3 class="font-extrabold text-lg mb-1"><i class="fas fa-paper-plane text-brand-orange"></i> 개별 포인트 발송</h3>
     <p class="text-sm text-gray-400 mb-4">@${nickname} 회원에게 직접 포인트를 보냅니다.</p>
     <div class="space-y-3">
-      <div><label class="block text-xs font-medium text-gray-500 mb-1">포인트 종류</label>
-        <select id="adj-kind" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none bg-white">
-          <option value="AUCTION">경매 포인트</option>
-          <option value="WAGE">임금 포인트</option>
-        </select></div>
+      <div class="bg-orange-50 rounded-xl px-4 py-2.5 text-xs text-gray-500"><i class="fas fa-coins text-brand-orange"></i> 경매포인트를 발송합니다. (회수 시 음수 입력)</div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">금액 (P)</label>
         <input id="adj-amount" type="number" placeholder="보낼 금액 (회수 시 음수, 예: -1000)" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none" /></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">사유 (선택)</label>
@@ -559,12 +566,11 @@ function openAdjust(userId, nickname) {
   </div>`)
 }
 async function doAdjust(userId) {
-  const kind = document.getElementById('adj-kind').value
   const amount = Number(document.getElementById('adj-amount').value)
   const reason = document.getElementById('adj-reason').value
   if (!amount) { toast('금액을 입력해주세요.', 'warn'); return }
   try {
-    await api.post(`/admin/members/${userId}/adjust`, { kind, amount, reason })
+    await api.post(`/admin/members/${userId}/adjust`, { amount, reason })
     closeModal(); toast('포인트가 조정되었습니다.', 'success'); pageAdminMembers({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
 }
@@ -582,16 +588,16 @@ async function pageAdminGradeGrant() {
   document.getElementById('app').innerHTML = adminLayout('/admin/grade-grant', `
     <h2 class="font-bold mb-4"><i class="fas fa-layer-group text-brand-orange"></i> 등급별 포인트 일괄 지급</h2>
 
-    <div class="bg-gradient-to-br from-brand-orange to-red-500 text-white rounded-2xl p-5 mb-4">
+    <div class="bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl p-5 mb-4">
       <div class="flex items-center justify-between mb-2">
-        <div class="font-extrabold text-lg"><i class="fas fa-bolt"></i> VIP 이상 경매P 강제 지급</div>
+        <div class="font-extrabold text-lg"><i class="fas fa-receipt"></i> VIP 이상 경매P 월 구독료</div>
         <span class="bg-white/20 px-3 py-1 rounded-full text-sm font-bold">대상 ${vipPlus}명</span>
       </div>
-      <p class="text-sm text-white/80 mb-3">VIP·VVIP·대리점·총판·이사 등급 회원 전원에게 <b>경매포인트</b>를 한 번에 지급합니다. (일반회원 제외)</p>
+      <p class="text-sm text-white/80 mb-3">VIP·VVIP·대리점·총판·이사 등급 회원 전원의 <b>경매포인트에서 월 구독료를 차감</b>하여 회사가 일괄 수금합니다. (일반회원 제외 · 잔액 부족 시 보유액 범위 내 차감)</p>
       <div class="flex flex-col sm:flex-row gap-2">
-        <input id="vip-amount" type="number" min="1" placeholder="1인당 경매P 금액 (예: 50000)" class="flex-1 px-4 py-2.5 rounded-xl text-gray-800 outline-none" />
-        <input id="vip-reason" placeholder="사유 (선택)" class="flex-1 px-4 py-2.5 rounded-xl text-gray-800 outline-none" />
-        <button onclick="doGrantVipAuction()" class="bg-brand-dark text-white px-5 py-2.5 rounded-xl font-bold whitespace-nowrap"><i class="fas fa-paper-plane"></i> 강제 지급</button>
+        <input id="vip-amount" type="number" min="1" placeholder="1인당 구독료 (예: 50000)" class="flex-1 px-4 py-2.5 rounded-xl text-gray-800 outline-none" />
+        <input id="vip-reason" placeholder="사유 (선택, 예: 6월 구독료)" class="flex-1 px-4 py-2.5 rounded-xl text-gray-800 outline-none" />
+        <button onclick="doGrantVipAuction()" class="bg-brand-dark text-white px-5 py-2.5 rounded-xl font-bold whitespace-nowrap"><i class="fas fa-money-bill-wave"></i> 구독료 수금</button>
       </div>
     </div>
 
@@ -616,13 +622,6 @@ async function pageAdminGradeGrant() {
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">포인트 종류</label>
-          <select id="gg-kind" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange bg-white">
-            <option value="AUCTION">경매 포인트</option>
-            <option value="WAGE">임금 포인트</option>
-          </select>
-        </div>
-        <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">1인당 지급 금액 (P)</label>
           <input id="gg-amount" type="number" min="1" placeholder="예: 10000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
         </div>
@@ -638,30 +637,28 @@ async function pageAdminGradeGrant() {
 
 async function doGradeGrant() {
   const grade = document.getElementById('gg-grade').value
-  const kind = document.getElementById('gg-kind').value
   const amount = Number(document.getElementById('gg-amount').value)
   const reason = document.getElementById('gg-reason').value
   if (!amount || amount <= 0) { toast('지급 금액을 올바르게 입력해주세요.', 'warn'); return }
-  const kindLabel = kind === 'AUCTION' ? '경매P' : '임금P'
-  if (!confirm(`[${gradeInfo(grade).label}] 등급 회원에게 ${kindLabel} ${won(amount)}을(를) 일괄 지급하시겠습니까?`)) return
+  if (!confirm(`[${gradeInfo(grade).label}] 등급 회원에게 경매P ${won(amount)}을(를) 일괄 지급하시겠습니까?`)) return
   try {
-    const { data } = await api.post('/admin/members/grade-grant', { grade, kind, amount, reason })
+    const { data } = await api.post('/admin/members/grade-grant', { grade, amount, reason })
     if (data.count === 0) { toast(data.message || '해당 등급의 회원이 없습니다.', 'warn'); return }
     toast(`${data.count}명에게 ${won(amount)} 일괄 지급 완료`, 'success')
     pageAdminGradeGrant()
   } catch (err) { toast(errMsg(err), 'error') }
 }
 
-// VIP 이상 경매P 강제 지급
+// VIP 이상 경매P 월 구독료 차감(수금)
 async function doGrantVipAuction() {
   const amount = Number(document.getElementById('vip-amount').value)
   const reason = document.getElementById('vip-reason').value
-  if (!amount || amount <= 0) { toast('지급 금액을 올바르게 입력해주세요.', 'warn'); return }
-  if (!confirm(`VIP 이상 등급 회원 전원에게 경매P ${won(amount)}을(를) 강제 지급하시겠습니까?`)) return
+  if (!amount || amount <= 0) { toast('구독료 금액을 올바르게 입력해주세요.', 'warn'); return }
+  if (!confirm(`VIP 이상 등급 회원 전원의 경매포인트에서 월 구독료 ${won(amount)}P를 차감(수금)하시겠습니까?`)) return
   try {
     const { data } = await api.post('/admin/members/grant-vip-auction', { amount, reason })
-    if (data.count === 0) { toast(data.message || 'VIP 이상 등급 회원이 없습니다.', 'warn'); return }
-    toast(`VIP 이상 ${data.count}명에게 경매P ${won(amount)} 강제 지급 완료`, 'success')
+    if (data.total === 0) { toast(data.message || 'VIP 이상 등급 회원이 없습니다.', 'warn'); return }
+    toast(`VIP 이상 ${data.count}명에게서 총 ${won(data.totalDeducted || 0)}P 수금 완료`, 'success')
     pageAdminGradeGrant()
   } catch (err) { toast(errMsg(err), 'error') }
 }
@@ -683,7 +680,7 @@ async function pageAdminWithdrawals() {
         <div>
           <div class="font-bold">${won(w.amount)}P 출금 ${badge(w.status)}</div>
           <div class="text-xs text-gray-400 mt-0.5">${w.name}(@${w.nickname}) · ${w.bankName||'-'} ${w.bankAccount||''} (${w.accountHolder||'-'})</div>
-          <div class="text-xs text-gray-300">신청 ${fmtDateTime(w.requestedAt)} · 보유 임금P ${won(w.wagePoint)}</div>
+          <div class="text-xs text-gray-300">신청 ${fmtDateTime(w.requestedAt)} · 보유 경매P ${won(w.auctionPoint)}</div>
         </div>
         ${w.status==='PENDING' ? `<div class="flex gap-2">
           <button onclick="processWd('${w.id}','approve')" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">승인</button>
@@ -928,7 +925,7 @@ async function pageAdminNetwork() {
       ${isAdmin ? '' : `<rect x="${NODE_W - 52}" y="8" width="44" height="17" rx="8.5" fill="${fill}"/><text x="${NODE_W - 30}" y="20" font-size="9.5" font-weight="700" fill="white" text-anchor="middle">${gi.label}</text>`}
       <text x="16" y="22" font-size="14" font-weight="700" fill="#2D3748">${m.name}${isAdmin?' 👑':''}</text>
       <text x="16" y="40" font-size="11" fill="#718096">@${m.nickname} · ${m.referralCode}</text>
-      <text x="16" y="56" font-size="10" fill="#a0aec0">참여${s.bids}/당첨${s.wins} · 임금${won(m.wagePoint)}P</text>
+      <text x="16" y="56" font-size="10" fill="#a0aec0">참여${s.bids}/당첨${s.wins} · 경매${won(m.auctionPoint)}P</text>
     </g>`
   })
 
@@ -969,7 +966,6 @@ function showAdminNodeDetail(n) {
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매 참여</span><span class="font-medium">${n.bids}회</span></div>
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">낙찰</span><span class="font-medium text-brand-orange">${n.wins}회</span></div>
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매P</span><span class="font-medium text-brand-orange">${won(n.auctionPoint)}</span></div>
-      <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">임금P</span><span class="font-medium text-blue-600">${won(n.wagePoint)}</span></div>
     </div>
     ${isAdmin ? '' : `<button onclick="openMemberEdit('${n.id}')" class="w-full mt-4 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium"><i class="fas fa-pen"></i> 이 회원 수정</button>`}`
 }

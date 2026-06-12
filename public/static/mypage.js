@@ -113,7 +113,7 @@ async function pageMypage() {
   document.getElementById('app').innerHTML = renderLoading()
   await Store.loadMe()
   const u = Store.user
-  const total = (u.auctionPoint || 0) + (u.wagePoint || 0)
+  const total = (u.auctionPoint || 0)
 
   const card = (icon, color, label, value, desc, btn) => `
     <div class="bg-white rounded-2xl border border-gray-100 p-5">
@@ -146,15 +146,16 @@ async function pageMypage() {
   </div>
 
   <div class="bg-gradient-to-br from-brand-orange to-red-500 text-white rounded-2xl p-6 mb-4">
-    <div class="text-sm text-white/80">총 보유 포인트</div>
+    <div class="text-sm text-white/80">경매 포인트 (보유)</div>
     <div class="text-4xl font-extrabold mt-1">${won(total)}<span class="text-xl">P</span></div>
+    <div class="flex gap-2 mt-4">
+      <a href="#/mypage/charge" class="flex-1 text-center bg-white/20 hover:bg-white/30 transition text-white px-3 py-2.5 rounded-xl font-semibold text-sm"><i class="fas fa-plus"></i> 충전하기</a>
+      <a href="#/mypage/withdraw" class="flex-1 text-center bg-white text-brand-orange px-3 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-money-bill-wave"></i> 출금하기</a>
+    </div>
   </div>
 
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-    ${card('fa-gavel', '#FF6B35', '경매 포인트', u.auctionPoint, '경매 참여·충전·미당첨 보상 (충전 가능)',
-      `<a href="#/mypage/charge" class="text-xs bg-brand-orange text-white px-3 py-1.5 rounded-lg font-medium">충전하기</a>`)}
-    ${card('fa-hand-holding-dollar', '#3b82f6', '임금 포인트', u.wagePoint, '추천 수당 (출금 가능)',
-      `<a href="#/mypage/withdraw" class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium">출금하기</a>`)}
+  <div class="bg-orange-50 rounded-2xl px-4 py-3 mb-6 text-xs text-gray-500">
+    <i class="fas fa-circle-info text-brand-orange"></i> 경매포인트는 경매 참여·충전·미당첨 보상·추천 수당으로 적립되며, <b>10,000P 이상부터 출금</b>할 수 있습니다.
   </div>
 
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -333,7 +334,7 @@ async function pageWithdraw() {
   await Store.loadConfig()
   const u = Store.user
   const min = Store.config?.minWithdrawAmount ?? 10000
-  const withdrawable = (u.wagePoint || 0)
+  const withdrawable = (u.auctionPoint || 0)
   const { data: wdData } = await api.get('/me/withdrawals')
   const hasAccount = u.bankName && u.bankAccount
 
@@ -348,7 +349,7 @@ async function pageWithdraw() {
   <div class="max-w-md mx-auto mt-3 space-y-4">
     <div class="bg-white rounded-2xl border border-gray-100 p-6">
       <h1 class="text-xl font-extrabold mb-1">출금 신청</h1>
-      <p class="text-sm text-gray-400 mb-4">출금 가능 포인트: <b class="text-green-600">${won(withdrawable)}P</b> <span class="text-xs">(임금 포인트만 출금 가능)</span></p>
+      <p class="text-sm text-gray-400 mb-4">출금 가능 경매포인트: <b class="text-green-600">${won(withdrawable)}P</b> <span class="text-xs">(${won(min)}P 이상 출금 가능)</span></p>
 
       <div class="mb-4">
         <div class="text-sm font-medium mb-2">출금 계좌 ${hasAccount ? '<span class="text-green-600 text-xs">✓ 등록됨</span>' : '<span class="text-red-500 text-xs">미등록</span>'}</div>
@@ -403,14 +404,14 @@ async function pageHistory(params, query) {
   const { data } = await api.get('/me/history' + (kind ? '?kind=' + kind : ''))
 
   const typeLabel = { CHARGE: '충전', USE: '사용', REWARD: '보상', REFERRAL: '추천수당', WITHDRAW: '출금', ADMIN_ADJ: '관리자조정' }
-  const kindLabel = { AUCTION: '경매', BALANCE: '경매', WAGE: '임금' }
+  const kindLabel = { AUCTION: '경매', BALANCE: '경매', WAGE: '경매' }
   const filterBtn = (k, label) => `<a href="#/mypage/history${k ? '?kind='+k : ''}" class="px-3 py-1.5 rounded-full text-sm font-medium ${kind===k ? 'bg-brand-orange text-white' : 'bg-gray-100 text-gray-600'}">${label}</a>`
 
   document.getElementById('app').innerHTML = layout(`
   <a href="#/mypage" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 마이페이지</a>
   <h1 class="text-xl font-extrabold mt-3 mb-4">포인트 내역</h1>
   <div class="flex gap-2 mb-4 flex-wrap">
-    ${filterBtn('', '전체')}${filterBtn('AUCTION', '경매')}${filterBtn('WAGE', '임금')}
+    ${filterBtn('', '전체')}
   </div>
   <div class="bg-white rounded-2xl border border-gray-100 divide-y divide-gray-50">
     ${data.history.length ? data.history.map(h => `

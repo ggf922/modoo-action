@@ -75,7 +75,7 @@ auth.post('/register', async (c) => {
 
   if (referrer) {
     stmts.push(
-      c.env.DB.prepare('UPDATE users SET wagePoint = wagePoint + ? WHERE id = ?').bind(referralBonus, referrer.id)
+      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(referralBonus, referrer.id)
     )
     const bonusDesc = isCompanyReferral
       ? `회사 추천 가입 보너스 (${nickname})`
@@ -83,7 +83,7 @@ auth.post('/register', async (c) => {
     stmts.push(
       c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'REFERRAL', 'WAGE', ?, ?, datetime('now'))`
+         VALUES (?, ?, 'REFERRAL', 'AUCTION', ?, ?, datetime('now'))`
       ).bind(genId('ph-'), referrer.id, referralBonus, bonusDesc)
     )
   }

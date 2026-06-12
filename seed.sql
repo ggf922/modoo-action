@@ -20,13 +20,13 @@ VALUES ('u-admin', 'admin', '$2b$10$ydSHn.R0Pnuw9PE8AsDZFu1hgef4S1F4UChVoBF0YR3i
 -- 회원 6명 (추천 관계 구성)
 -- user1 <- admin
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-VALUES ('u-user1', 'user1@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '김일번', '010-1111-1111', '일번이', 'MEMBER', 50000, 0, 1000, 'u-admin', 'USER0001', datetime('now','-25 days'), datetime('now'));
+VALUES ('u-user1', 'user1@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '김일번', '010-1111-1111', '일번이', 'MEMBER', 51000, 0, 0, 'u-admin', 'USER0001', datetime('now','-25 days'), datetime('now'));
 -- user2 <- user1
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-VALUES ('u-user2', 'user2@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '이이번', '010-2222-2222', '이번이', 'MEMBER', 50000, 0, 1000, 'u-user1', 'USER0002', datetime('now','-20 days'), datetime('now'));
+VALUES ('u-user2', 'user2@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '이이번', '010-2222-2222', '이번이', 'MEMBER', 51000, 0, 0, 'u-user1', 'USER0002', datetime('now','-20 days'), datetime('now'));
 -- user3 <- user1
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-VALUES ('u-user3', 'user3@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '박삼번', '010-3333-3333', '삼번이', 'MEMBER', 50000, 0, 500, 'u-user1', 'USER0003', datetime('now','-18 days'), datetime('now'));
+VALUES ('u-user3', 'user3@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '박삼번', '010-3333-3333', '삼번이', 'MEMBER', 50500, 0, 0, 'u-user1', 'USER0003', datetime('now','-18 days'), datetime('now'));
 -- user4 <- user2
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
 VALUES ('u-user4', 'user4@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '최사번', '010-4444-4444', '사번이', 'MEMBER', 100000, 0, 0, 'u-user2', 'USER0004', datetime('now','-15 days'), datetime('now'));
@@ -37,14 +37,14 @@ VALUES ('u-user5', 'user5@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmT
 INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
 VALUES ('u-user6', 'user6@test.com', '$2b$10$doUK/eh6lhsAQWgKfxJizO.uSmUeyTs7NmTG2GNDpY/sai.gfVfz6', '강육번', '010-6666-6666', '육번이', 'MEMBER', 100000, 0, 0, 'u-user3', 'USER0006', datetime('now','-10 days'), datetime('now'));
 
--- 추천 보너스 내역 (시드 회원의 wagePoint 근거)
+-- 추천 보너스 내역 (시드 회원의 경매P 근거)
 INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt) VALUES
- ('ph-r1', 'u-admin', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (일번이)', datetime('now','-25 days')),
- ('ph-r2', 'u-user1', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (이번이)', datetime('now','-20 days')),
- ('ph-r3', 'u-user1', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (삼번이)', datetime('now','-18 days')),
- ('ph-r4', 'u-user2', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (사번이)', datetime('now','-15 days')),
- ('ph-r5', 'u-user2', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (오번이)', datetime('now','-12 days')),
- ('ph-r6', 'u-user3', 'REFERRAL', 'WAGE', 500, '추천 가입 보너스 (육번이)', datetime('now','-10 days'));
+ ('ph-r1', 'u-admin', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (일번이)', datetime('now','-25 days')),
+ ('ph-r2', 'u-user1', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (이번이)', datetime('now','-20 days')),
+ ('ph-r3', 'u-user1', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (삼번이)', datetime('now','-18 days')),
+ ('ph-r4', 'u-user2', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (사번이)', datetime('now','-15 days')),
+ ('ph-r5', 'u-user2', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (오번이)', datetime('now','-12 days')),
+ ('ph-r6', 'u-user3', 'REFERRAL', 'AUCTION', 500, '추천 가입 보너스 (육번이)', datetime('now','-10 days'));
 
 -- 초기 충전 내역 (auctionPoint 5000 근거)
 INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt) VALUES
@@ -57,11 +57,13 @@ INSERT INTO point_history (id, userId, type, pointKind, amount, description, cre
 
 -- 상품 5개
 INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, startAt, createdAt) VALUES
- ('p-1', '삼성 갤럭시 버즈 프로', '최고급 노이즈 캔슬링 무선 이어버드. 풍부한 사운드와 편안한 착용감을 자랑합니다.', 'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=600&q=80', '전자기기', 250000, 50000, 50000, 10, 1, 200, 'OPEN', 0, datetime('now'), datetime('now')),
+ ('p-1', '삼성 갤럭시 버즈 프로', '최고급 노이즈 캔슬링 무선 이어버드. 풍부한 사운드와 편안한 착용감을 자랑합니다.', 'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=600&q=80', '가전', 250000, 50000, 50000, 10, 1, 200, 'OPEN', 0, datetime('now'), datetime('now')),
  ('p-2', '스타벅스 텀블러 세트', '한정판 스타벅스 텀블러 3종 세트. 따뜻한 커피 한 잔의 여유를 선물하세요.', 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?w=600&q=80', '생활용품', 80000, 10000, 10000, 10, 1, 200, 'OPEN', 1, datetime('now'), datetime('now')),
  ('p-3', '다이슨 무선청소기 V12', '강력한 흡입력의 다이슨 V12 무선청소기. 집안 청소가 즐거워집니다.', 'https://images.unsplash.com/photo-1558317374-067fb5f30001?w=600&q=80', '가전', 950000, 200000, 200000, 10, 1, 200, 'OPEN', 2, datetime('now'), datetime('now')),
  ('p-4', '한우 등심 1kg', '1++ 등급 프리미엄 한우 등심 1kg. 입에서 살살 녹는 최고의 맛.', 'https://images.unsplash.com/photo-1603048297172-c92544798d5a?w=600&q=80', '식품', 120000, 30000, 30000, 10, 1, 200, 'OPEN', 3, datetime('now'), datetime('now')),
- ('p-5', '에어팟 프로 2세대', '애플 에어팟 프로 2세대. 적응형 오디오와 강력한 노이즈 캔슬링.', 'https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?w=600&q=80', '전자기기', 350000, 80000, 80000, 10, 1, 200, 'OPEN', 4, datetime('now'), datetime('now'));
+ ('p-5', '에어팟 프로 2세대', '애플 에어팟 프로 2세대. 적응형 오디오와 강력한 노이즈 캔슬링.', 'https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?w=600&q=80', '가전', 350000, 80000, 80000, 10, 1, 200, 'OPEN', 4, datetime('now'), datetime('now')),
+ ('p-6', '홍삼정 에브리타임', '6년근 홍삼 농축액 스틱. 매일 챙기는 활력 건강식품.', 'https://images.unsplash.com/photo-1542736667-069246bdbc6d?w=600&q=80', '건강식품', 150000, 40000, 40000, 10, 1, 200, 'OPEN', 5, datetime('now'), datetime('now')),
+ ('p-7', '설화수 자음생 세트', '프리미엄 안티에이징 화장품 세트. 피부에 생기를 더합니다.', 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=600&q=80', '화장품', 280000, 60000, 60000, 10, 1, 200, 'OPEN', 6, datetime('now'), datetime('now'));
 
 -- 상품 1번에 user1, user2, user3 사전 참여
 INSERT INTO bids (id, userId, productId, pointsUsed, isWinner, createdAt) VALUES
