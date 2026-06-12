@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables, ProductRow, UserRow } from '../types'
+import type { D1PreparedStatement } from '../lib/db'
 import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
@@ -395,7 +396,7 @@ admin.put('/members/:id', async (c) => {
       let cursor: string | null = ref.id
       for (let i = 0; i < 50 && cursor; i++) {
         if (cursor === id) return c.json({ error: '하위 회원을 추천인으로 지정할 수 없습니다 (순환 참조).' }, 400)
-        const up = await c.env.DB.prepare('SELECT referrerId FROM users WHERE id = ?').bind(cursor).first<{ referrerId: string | null }>()
+        const up: { referrerId: string | null } | null = await c.env.DB.prepare('SELECT referrerId FROM users WHERE id = ?').bind(cursor).first<{ referrerId: string | null }>()
         cursor = up?.referrerId ?? null
       }
       referrerId = ref.id

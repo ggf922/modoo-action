@@ -1,6 +1,9 @@
-// Cloudflare 바인딩 타입
+import type { PgDatabase } from './lib/db'
+
+// 앱 바인딩 타입 (Vercel/Node 환경에서 미들웨어가 주입)
+// PgDatabase 는 D1Database 호환 인터페이스(prepare/bind/first/all/run/batch)를 제공한다.
 export type Bindings = {
-  DB: D1Database
+  DB: PgDatabase
   JWT_SECRET: string
 }
 

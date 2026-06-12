@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Bindings, Variables } from './types'
-import { sessionMiddleware } from './lib/middleware'
+import { envMiddleware, sessionMiddleware } from './lib/middleware'
 import authRoutes from './routes/auth'
 import productRoutes from './routes/products'
 import meRoutes from './routes/me'
@@ -11,6 +11,7 @@ import { renderApp } from './views/app'
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 app.use('/api/*', cors())
+app.use('*', envMiddleware)      // DB/JWT_SECRET 주입 (최우선)
 app.use('*', sessionMiddleware)
 
 // ===== API =====

@@ -1,4 +1,5 @@
 import type { ProductRow } from '../types'
+import type { D1Database, D1PreparedStatement } from './db'
 import { genId } from './auth'
 
 type BidRow = { id: string; userId: string; productId: string; pointsUsed: number }

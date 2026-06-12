@@ -2,27 +2,20 @@
   "name": "webapp",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:sandbox": "wrangler pages dev dist --d1=webapp-production --local --ip 0.0.0.0 --port 3000",
-    "build": "vite build",
-    "preview": "wrangler pages dev dist",
-    "deploy": "npm run build && wrangler pages deploy dist",
-    "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",
-    "db:migrate:prod": "wrangler d1 migrations apply webapp-production",
-    "db:seed": "wrangler d1 execute webapp-production --local --file=./seed.sql",
-    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    "dev": "vercel dev",
+    "build": "echo 'Vercel builds api/ automatically' && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "deploy": "vercel --prod"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "hono": "^4.12.23",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "postgres": "^3.4.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260608.1",
-    "@hono/vite-build": "^1.2.0",
-    "@hono/vite-dev-server": "^0.25.2",
-    "vite": "^6.3.5",
-    "wrangler": "^4.4.0"
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vercel": "^39.0.0"
   }
 }

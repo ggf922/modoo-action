@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { setCookie, deleteCookie } from 'hono/cookie'
 import type { Bindings, Variables, UserRow } from '../types'
+import type { D1PreparedStatement } from '../lib/db'
 import { hashPassword, verifyPassword, createToken, genId, genReferralCode } from '../lib/auth'
 import { requireAuth } from '../lib/middleware'
 

@@ -36,3 +36,8 @@ lerna-debug.log*
 .wrangler/
 dist/
 .dev.vars
+
+# Vercel
+.vercel
+.env.local
+.env*.local

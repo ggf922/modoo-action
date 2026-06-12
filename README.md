@@ -7,26 +7,28 @@
 - **목표**: 낙찰자 / 미낙찰자 / 추천인 모두가 이익을 보는 경매형 쇼핑몰
 - **핵심 가치**: 초저가 자동구매 · 미당첨 보상 포인트 · 추천 조직도 + 단일 경매P 체계
 
-> ⚙️ **기술 스택 안내 (옵션 B)**: 본래 요청은 Next.js + Prisma + PostgreSQL 이었으나,
-> 단계별 "라이브 동작 시연"과 "전체 플로우 테스트"를 우선하기 위해 **엣지 친화 스택**으로 기능 동일 재구성했습니다.
-> 비즈니스 로직, 화면 명세, 디자인 가이드, 시드 데이터는 요청서 그대로 100% 구현되어 있습니다.
+> ⚙️ **호스팅 스택 (Vercel + Supabase로 이전 완료)**: 안정적인 운영과 다른 프로젝트와의 관리 일원화를 위해
+> **Vercel(호스팅) + Supabase PostgreSQL(DB)** 로 마이그레이션했습니다. 프레임워크는 **Hono**를 그대로 유지하며,
+> 기존 D1 호출(190여 곳)은 **D1 호환 어댑터(`src/lib/db.ts`)** 로 코드 수정 없이 PostgreSQL에 연결됩니다.
+> 비즈니스 로직, 화면 명세, 디자인 가이드는 100% 동일하게 동작합니다. 배포 절차는 **[DEPLOY.md](./DEPLOY.md)** 참고.
 
 ## 🌐 URL
-- **개발 서버 (현재)**: https://3000-inc6chu1vd00bmb8odq4g-ad490db5.sandbox.novita.ai
-- **프로덕션**: 미배포 (Cloudflare Pages 배포 준비 완료)
+- **프로덕션 (Vercel)**: 배포 후 `https://modoo-action.vercel.app` (DEPLOY.md 참고)
+- **GitHub**: https://github.com/ggf922/modoo-action
 
 ## 🛠️ 기술 스택 (실제 구현)
-| 영역 | 요청(Next.js 계열) | 실제 구현(엣지 동일 기능) |
+| 영역 | 요청(Next.js 계열) | 실제 구현 |
 |---|---|---|
-| 백엔드 | Next.js API Routes | **Hono** (Cloudflare Workers) |
-| DB | Prisma + PostgreSQL | **Cloudflare D1** (SQLite) + SQL 마이그레이션 |
+| 호스팅 | Vercel | **Vercel Functions** (Node.js 런타임) |
+| 백엔드 | Next.js API Routes | **Hono** (`hono/vercel` 진입점) |
+| DB | Prisma + PostgreSQL | **Supabase PostgreSQL** + D1 호환 어댑터(postgres.js) |
 | 인증 | NextAuth.js | **JWT(jose) + bcryptjs** 쿠키 세션 |
 | 프론트 | React + shadcn/ui | **SPA(Vanilla JS) + TailwindCSS(CDN)** |
 | 조직도 | React Flow | **커스텀 SVG 트리** (재귀 레이아웃) |
 | 차트 | - | **Chart.js** (CDN) |
 | 애니메이션 | Framer Motion | **CSS Keyframes** (pop/confetti/slot) |
 
-## 🗄️ 데이터 모델 (Cloudflare D1)
+## 🗄️ 데이터 모델 (Supabase PostgreSQL)
 - **users**: 회원(경매포인트 단일 체계, 추천관계, 계좌, role, **grade 등급**)
   - `grade`: 회원 등급 — `NORMAL`(일반회원) / `VIP` / `VVIP` / `AGENCY`(대리점) / `DISTRIBUTOR`(총판) / `DIRECTOR`(이사). 기본값 `NORMAL`, 관리자가 승인·변경
 - **products**: 경매 상품(시중가/시작가/참가비/정원/당첨자수/미당첨보상/상태/**sortOrder**) — `imageUrl`은 TEXT(외부 URL 또는 압축 Base64 이미지 저장), `sortOrder`로 노출 순서 제어
@@ -116,7 +118,7 @@
 
 > 로그인 화면은 **이메일 또는 아이디** 입력을 받습니다. 관리자는 아이디 `admin` / 비밀번호 `admin123` 으로 로그인합니다.
 >
-> ⚠️ **프로덕션에서 관리자 로그인이 안 될 때**: 프로덕션 D1에 최신 계정이 없을 수 있습니다. 마이그레이션 `0003_ensure_admin_account.sql` 이 `admin`/`admin123` 계정을 멱등(INSERT OR IGNORE)으로 보장하므로, 배포 시 `npx wrangler d1 migrations apply webapp-production` 를 실행하면 관리자 계정이 자동 생성됩니다.
+> ⚠️ **프로덕션에서 관리자 로그인이 안 될 때**: Supabase에 스키마/관리자 계정이 없을 수 있습니다. `supabase/schema.sql` 을 Supabase SQL Editor에서 실행하면 `admin`/`admin123` 계정이 멱등(`ON CONFLICT DO NOTHING`)으로 자동 생성됩니다. (DEPLOY.md 1-2 참고)
 
 **추천 관계**: admin → user1 → (user2, user3), user2 → (user4, user5), user3 → user6
 **시드 상품 5개**: 갤럭시 버즈 프로 / 스타벅스 텀블러 / 다이슨 V12 / 한우 등심 / 에어팟 프로 2
@@ -130,15 +132,14 @@
 ## 🚀 로컬 실행 방법
 ```bash
 npm install
-npm run db:migrate:local   # D1 로컬 마이그레이션
-npm run db:seed            # 시드 데이터
-npm run build              # Vite 빌드
-pm2 start ecosystem.config.cjs   # 서버 시작 (포트 3000)
-# 또는: npm run dev:sandbox
+# .env.local 에 DATABASE_URL(=Supabase 또는 로컬 PG), JWT_SECRET 설정 후
+npx vercel dev     # http://localhost:3000
 
-# DB 초기화(시드 재적용)
-npm run db:reset
+# 타입 체크
+npm run typecheck
 ```
+> DB 스키마는 `supabase/schema.sql` 을 Supabase SQL Editor(또는 로컬 PostgreSQL)에서 실행해 생성합니다.
+> 실제 배포 절차는 **[DEPLOY.md](./DEPLOY.md)** 를 참고하세요.
 
 ## ✅ 완료된 기능
 - 회원가입(추천코드 검증/보너스 지급, **추천코드 미입력 시 회사(관리자) 자동 추천**) · 로그인/로그아웃 · JWT 세션
@@ -174,10 +175,12 @@ npm run db:reset
 
 ## 📋 미구현 / 향후 과제
 - 실제 PG 결제(현재 **입금→관리자 승인** 방식), 휴대폰 본인인증, SMS/이메일 실발송(콘솔 로그 대체), WebSocket 실시간(현재 새로고침 기반)
-- 이미지 저장: 현재 **Base64 자동 압축 방식**(D1 TEXT 저장 — 데모/MVP에 최적). 대용량 운영 시 Cloudflare R2 또는 Supabase Storage 전환 권장
-- 다음 단계 권장: Cloudflare 프로덕션 배포(D1 원격 마이그레이션) → 실결제(Stripe 등) 연동 → 실시간 폴링/SSE → 이미지 오브젝트 스토리지(R2/Supabase Storage)
+- 이미지 저장: 현재 **Base64 자동 압축 방식**(TEXT 저장 — 데모/MVP에 최적). 대용량 운영 시 Supabase Storage 전환 권장
+- 다음 단계 권장: Vercel 프로덕션 배포(DEPLOY.md) → 실결제(Stripe 등) 연동 → 실시간 폴링/SSE → 이미지 오브젝트 스토리지(Supabase Storage)
 
 ## 📦 배포 상태
-- **플랫폼**: Cloudflare Pages (배포 대기)
-- **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-12 (**단일 경매P 체계 개편**: 임금P 제거·추천수당도 경매P 적립 · 출금을 경매P 10,000P 이상으로 변경 · VIP 이상 경매P **월 구독료 차감**(회사 수금) · 회원관리 상단 검색창 전용 카드로 노출 · 대시보드 카테고리 6종 고정+상품별 경매 참여 횟수 차트) / 이전: 잔액P→경매P 통합 · 개별 포인트 발송 · 등급 인라인 변경 · 조직도 등급 색상 / 회원 등급 6단계
+- **플랫폼**: **Vercel + Supabase PostgreSQL** (Vercel Pro / Supabase Pro)
+- **마이그레이션 검증**: ✅ 실제 PostgreSQL 17에서 핵심 플로우 e2e 검증 완료 (관리자 로그인 · 회원가입+추천보너스 · 상품 CRUD · ILIKE 회원검색 · 대시보드 통계 6종 · **batch 트랜잭션 포인트 지급**)
+- **타입체크**: ✅ `tsc --noEmit` 통과
+- **배포 가이드**: [DEPLOY.md](./DEPLOY.md) (Supabase 스키마 → Vercel 환경변수 → 배포 → 커스텀 도메인 → 보안 체크리스트)
+- **최종 업데이트**: 2026-06-12 (**Vercel + Supabase 마이그레이션**: Hono 유지 · D1→PostgreSQL 어댑터(`src/lib/db.ts`, SQL 자동변환) · `api/index.ts` Vercel 진입점 · `vercel.json` 라우팅 · postgres.js Transaction Pooler) / 이전: 단일 경매P 체계 개편 · 회원 등급 6단계
