@@ -8,6 +8,7 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.4",
     "bcryptjs": "^3.0.3",
     "hono": "^4.12.23",
     "jose": "^6.2.3",

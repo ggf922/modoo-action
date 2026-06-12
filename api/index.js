@@ -1,4 +1,960 @@
-import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url); import { fileURLToPath as __ftp } from 'url'; import { dirname as __dn } from 'path'; const __filename = __ftp(import.meta.url); const __dirname = __dn(__filename);
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// server/index.ts
+var index_exports = {};
+__export(index_exports, {
+  default: () => handler
+});
+module.exports = __toCommonJS(index_exports);
+
+// node_modules/@hono/node-server/dist/constants-BLSFu_RU.mjs
+var X_ALREADY_SENT = "x-hono-already-sent";
+
+// node_modules/@hono/node-server/dist/index.mjs
+var import_node_http2 = require("node:http2");
+var import_node_stream = require("node:stream");
+
+// node_modules/hono/dist/helper/websocket/index.js
+var defineWebSocketHelper = (handler2) => {
+  return ((...args) => {
+    if (typeof args[0] === "function") {
+      const [createEvents, options] = args;
+      return async function upgradeWebSocket2(c, next) {
+        const events = await createEvents(c);
+        const result = await handler2(c, events, options);
+        if (result) {
+          return result;
+        }
+        await next();
+      };
+    } else {
+      const [c, events, options] = args;
+      return (async () => {
+        const upgraded = await handler2(c, events, options);
+        if (!upgraded) {
+          throw new Error("Failed to upgrade WebSocket");
+        }
+        return upgraded;
+      })();
+    }
+  });
+};
+
+// node_modules/@hono/node-server/dist/index.mjs
+var RequestError = class extends Error {
+  constructor(message2, options) {
+    super(message2, options);
+    this.name = "RequestError";
+  }
+};
+var reValidRequestUrl = /^\/[!#$&-;=?-\[\]_a-z~]*$/;
+var reDotSegment = /\/\.\.?(?:[/?#]|$)/;
+var reValidHost = /^[a-z0-9._-]+(?::(?:[1-5]\d{3,4}|[6-9]\d{3}))?$/;
+var buildUrl = (scheme, host, incomingUrl) => {
+  const url = `${scheme}://${host}${incomingUrl}`;
+  if (!reValidHost.test(host)) {
+    const urlObj = new URL(url);
+    if (urlObj.hostname.length !== host.length && urlObj.hostname !== (host.includes(":") ? host.replace(/:\d+$/, "") : host).toLowerCase()) throw new RequestError("Invalid host header");
+    return urlObj.href;
+  } else if (incomingUrl.length === 0) return url + "/";
+  else {
+    if (incomingUrl.charCodeAt(0) !== 47) throw new RequestError("Invalid URL");
+    if (!reValidRequestUrl.test(incomingUrl) || reDotSegment.test(incomingUrl)) return new URL(url).href;
+    return url;
+  }
+};
+var toRequestError = (e) => {
+  if (e instanceof RequestError) return e;
+  return new RequestError(e.message, { cause: e });
+};
+var GlobalRequest = global.Request;
+var Request$1 = class extends GlobalRequest {
+  constructor(input, options) {
+    if (typeof input === "object" && getRequestCache in input) {
+      const hasReplacementBody = options !== void 0 && "body" in options && options.body != null;
+      if (input[bodyConsumedDirectlyKey] && !hasReplacementBody) throw new TypeError("Cannot construct a Request with a Request object that has already been used.");
+      input = input[getRequestCache]();
+    }
+    if (typeof options?.body?.getReader !== "undefined") options.duplex ??= "half";
+    super(input, options);
+  }
+};
+var newHeadersFromIncoming = (incoming) => {
+  const headerRecord = [];
+  const rawHeaders = incoming.rawHeaders;
+  for (let i = 0, len = rawHeaders.length; i < len; i += 2) {
+    const key = rawHeaders[i];
+    if (key.charCodeAt(0) !== 58) headerRecord.push([key, rawHeaders[i + 1]]);
+  }
+  return new Headers(headerRecord);
+};
+var wrapBodyStream = /* @__PURE__ */ Symbol("wrapBodyStream");
+var newRequestFromIncoming = (method, url, headers, incoming, abortController) => {
+  const init = {
+    method,
+    headers,
+    signal: abortController.signal
+  };
+  if (method === "TRACE") {
+    init.method = "GET";
+    const req = new Request$1(url, init);
+    Object.defineProperty(req, "method", { get() {
+      return "TRACE";
+    } });
+    return req;
+  }
+  if (!(method === "GET" || method === "HEAD")) if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) init.body = new ReadableStream({ start(controller) {
+    controller.enqueue(incoming.rawBody);
+    controller.close();
+  } });
+  else if (incoming[wrapBodyStream]) {
+    let reader;
+    init.body = new ReadableStream({ async pull(controller) {
+      try {
+        reader ||= import_node_stream.Readable.toWeb(incoming).getReader();
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      }
+    } });
+  } else init.body = import_node_stream.Readable.toWeb(incoming);
+  return new Request$1(url, init);
+};
+var getRequestCache = /* @__PURE__ */ Symbol("getRequestCache");
+var requestCache = /* @__PURE__ */ Symbol("requestCache");
+var incomingKey = /* @__PURE__ */ Symbol("incomingKey");
+var urlKey = /* @__PURE__ */ Symbol("urlKey");
+var methodKey = /* @__PURE__ */ Symbol("methodKey");
+var headersKey = /* @__PURE__ */ Symbol("headersKey");
+var abortControllerKey = /* @__PURE__ */ Symbol("abortControllerKey");
+var getAbortController = /* @__PURE__ */ Symbol("getAbortController");
+var abortRequest = /* @__PURE__ */ Symbol("abortRequest");
+var bodyBufferKey = /* @__PURE__ */ Symbol("bodyBuffer");
+var bodyReadPromiseKey = /* @__PURE__ */ Symbol("bodyReadPromise");
+var bodyConsumedDirectlyKey = /* @__PURE__ */ Symbol("bodyConsumedDirectly");
+var bodyLockReaderKey = /* @__PURE__ */ Symbol("bodyLockReader");
+var abortReasonKey = /* @__PURE__ */ Symbol("abortReason");
+var newBodyUnusableError = () => {
+  return /* @__PURE__ */ new TypeError("Body is unusable");
+};
+var rejectBodyUnusable = () => {
+  return Promise.reject(newBodyUnusableError());
+};
+var textDecoder = new TextDecoder();
+var consumeBodyDirectOnce = (request) => {
+  if (request[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+  request[bodyConsumedDirectlyKey] = true;
+};
+var toArrayBuffer = (buf) => {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+};
+var contentType = (request) => {
+  return (request[headersKey] ||= newHeadersFromIncoming(request[incomingKey])).get("content-type") || "";
+};
+var methodTokenRegExp = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+var normalizeIncomingMethod = (method) => {
+  if (typeof method !== "string" || method.length === 0) return "GET";
+  switch (method) {
+    case "DELETE":
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+    case "PUT":
+      return method;
+  }
+  const upper = method.toUpperCase();
+  switch (upper) {
+    case "DELETE":
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+    case "PUT":
+      return upper;
+    default:
+      return method;
+  }
+};
+var validateDirectReadMethod = (method) => {
+  if (!methodTokenRegExp.test(method)) return /* @__PURE__ */ new TypeError(`'${method}' is not a valid HTTP method.`);
+  const normalized = method.toUpperCase();
+  if (normalized === "CONNECT" || normalized === "TRACK" || normalized === "TRACE" && method !== "TRACE") return /* @__PURE__ */ new TypeError(`'${method}' HTTP method is unsupported.`);
+};
+var readBodyWithFastPath = (request, method, fromBuffer) => {
+  if (request[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+  const methodName = request.method;
+  if (methodName === "GET" || methodName === "HEAD") return request[getRequestCache]()[method]();
+  const methodValidationError = validateDirectReadMethod(methodName);
+  if (methodValidationError) return Promise.reject(methodValidationError);
+  if (request[requestCache]) {
+    if (methodName !== "TRACE") return request[requestCache][method]();
+  }
+  const alreadyUsedError = consumeBodyDirectOnce(request);
+  if (alreadyUsedError) return alreadyUsedError;
+  const raw2 = readRawBodyIfAvailable(request);
+  if (raw2) {
+    const result = Promise.resolve(fromBuffer(raw2, request));
+    request[bodyBufferKey] = void 0;
+    return result;
+  }
+  return readBodyDirect(request).then((buf) => {
+    const result = fromBuffer(buf, request);
+    request[bodyBufferKey] = void 0;
+    return result;
+  });
+};
+var readRawBodyIfAvailable = (request) => {
+  const incoming = request[incomingKey];
+  if ("rawBody" in incoming && incoming.rawBody instanceof Buffer) return incoming.rawBody;
+};
+var readBodyDirect = (request) => {
+  if (request[bodyBufferKey]) return Promise.resolve(request[bodyBufferKey]);
+  if (request[bodyReadPromiseKey]) return request[bodyReadPromiseKey];
+  const incoming = request[incomingKey];
+  if (import_node_stream.Readable.isDisturbed(incoming)) return rejectBodyUnusable();
+  const promise = new Promise((resolve, reject) => {
+    const chunks = [];
+    let settled = false;
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const onData = (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    };
+    const onEnd = () => {
+      finish(() => {
+        const buffer2 = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+        request[bodyBufferKey] = buffer2;
+        resolve(buffer2);
+      });
+    };
+    const onError = (error) => {
+      finish(() => {
+        reject(error);
+      });
+    };
+    const onClose = () => {
+      if (incoming.readableEnded) {
+        onEnd();
+        return;
+      }
+      finish(() => {
+        if (incoming.errored) {
+          reject(incoming.errored);
+          return;
+        }
+        const reason = request[abortReasonKey];
+        if (reason !== void 0) {
+          reject(reason instanceof Error ? reason : new Error(String(reason)));
+          return;
+        }
+        reject(/* @__PURE__ */ new Error("Client connection prematurely closed."));
+      });
+    };
+    const cleanup = () => {
+      incoming.off("data", onData);
+      incoming.off("end", onEnd);
+      incoming.off("error", onError);
+      incoming.off("close", onClose);
+      request[bodyReadPromiseKey] = void 0;
+    };
+    incoming.on("data", onData);
+    incoming.on("end", onEnd);
+    incoming.on("error", onError);
+    incoming.on("close", onClose);
+    queueMicrotask(() => {
+      if (settled) return;
+      if (incoming.readableEnded) onEnd();
+      else if (incoming.errored) onError(incoming.errored);
+      else if (incoming.destroyed) onClose();
+    });
+  });
+  request[bodyReadPromiseKey] = promise;
+  return promise;
+};
+var requestPrototype = {
+  get method() {
+    return this[methodKey];
+  },
+  get url() {
+    return this[urlKey];
+  },
+  get headers() {
+    return this[headersKey] ||= newHeadersFromIncoming(this[incomingKey]);
+  },
+  [abortRequest](reason) {
+    if (this[abortReasonKey] === void 0) this[abortReasonKey] = reason;
+    const abortController = this[abortControllerKey];
+    if (abortController && !abortController.signal.aborted) abortController.abort(reason);
+  },
+  [getAbortController]() {
+    this[abortControllerKey] ||= new AbortController();
+    if (this[abortReasonKey] !== void 0 && !this[abortControllerKey].signal.aborted) this[abortControllerKey].abort(this[abortReasonKey]);
+    return this[abortControllerKey];
+  },
+  [getRequestCache]() {
+    const abortController = this[getAbortController]();
+    if (this[requestCache]) return this[requestCache];
+    const method = this.method;
+    if (this[bodyConsumedDirectlyKey] && !(method === "GET" || method === "HEAD")) {
+      this[bodyBufferKey] = void 0;
+      const init = {
+        method: method === "TRACE" ? "GET" : method,
+        headers: this.headers,
+        signal: abortController.signal
+      };
+      if (method !== "TRACE") {
+        init.body = new ReadableStream({ start(c) {
+          c.close();
+        } });
+        init.duplex = "half";
+      }
+      const req = new Request$1(this[urlKey], init);
+      if (method === "TRACE") Object.defineProperty(req, "method", { get() {
+        return "TRACE";
+      } });
+      return this[requestCache] = req;
+    }
+    return this[requestCache] = newRequestFromIncoming(this.method, this[urlKey], this.headers, this[incomingKey], abortController);
+  },
+  get body() {
+    if (!this[bodyConsumedDirectlyKey]) return this[getRequestCache]().body;
+    const request = this[getRequestCache]();
+    if (!this[bodyLockReaderKey] && request.body) this[bodyLockReaderKey] = request.body.getReader();
+    return request.body;
+  },
+  get bodyUsed() {
+    if (this[bodyConsumedDirectlyKey]) return true;
+    if (this[requestCache]) return this[requestCache].bodyUsed;
+    return false;
+  }
+};
+Object.defineProperty(requestPrototype, "signal", { get() {
+  return this[getAbortController]().signal;
+} });
+[
+  "cache",
+  "credentials",
+  "destination",
+  "integrity",
+  "mode",
+  "redirect",
+  "referrer",
+  "referrerPolicy",
+  "keepalive"
+].forEach((k) => {
+  Object.defineProperty(requestPrototype, k, { get() {
+    return this[getRequestCache]()[k];
+  } });
+});
+["clone", "formData"].forEach((k) => {
+  Object.defineProperty(requestPrototype, k, { value: function() {
+    if (this[bodyConsumedDirectlyKey]) {
+      if (k === "clone") throw newBodyUnusableError();
+      return rejectBodyUnusable();
+    }
+    return this[getRequestCache]()[k]();
+  } });
+});
+Object.defineProperty(requestPrototype, "text", { value: function() {
+  return readBodyWithFastPath(this, "text", (buf) => textDecoder.decode(buf));
+} });
+Object.defineProperty(requestPrototype, "arrayBuffer", { value: function() {
+  return readBodyWithFastPath(this, "arrayBuffer", (buf) => toArrayBuffer(buf));
+} });
+Object.defineProperty(requestPrototype, "blob", { value: function() {
+  return readBodyWithFastPath(this, "blob", (buf, request) => {
+    const type = contentType(request);
+    const init = type ? { headers: { "content-type": type } } : void 0;
+    return new Response(buf, init).blob();
+  });
+} });
+Object.defineProperty(requestPrototype, "json", { value: function() {
+  if (this[bodyConsumedDirectlyKey]) return rejectBodyUnusable();
+  return this.text().then(JSON.parse);
+} });
+Object.defineProperty(requestPrototype, /* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
+  return `Request (lightweight) ${inspectFn({
+    method: this.method,
+    url: this.url,
+    headers: this.headers,
+    nativeRequest: this[requestCache]
+  }, {
+    ...options,
+    depth: depth == null ? null : depth - 1
+  })}`;
+} });
+Object.setPrototypeOf(requestPrototype, Request$1.prototype);
+var newRequest = (incoming, defaultHostname) => {
+  const req = Object.create(requestPrototype);
+  req[incomingKey] = incoming;
+  req[methodKey] = normalizeIncomingMethod(incoming.method);
+  const incomingUrl = incoming.url || "";
+  if (incomingUrl[0] !== "/" && (incomingUrl.startsWith("http://") || incomingUrl.startsWith("https://"))) {
+    if (incoming instanceof import_node_http2.Http2ServerRequest) throw new RequestError("Absolute URL for :path is not allowed in HTTP/2");
+    try {
+      req[urlKey] = new URL(incomingUrl).href;
+    } catch (e) {
+      throw new RequestError("Invalid absolute URL", { cause: e });
+    }
+    return req;
+  }
+  const host = (incoming instanceof import_node_http2.Http2ServerRequest ? incoming.authority : incoming.headers.host) || defaultHostname;
+  if (!host) throw new RequestError("Missing host header");
+  let scheme;
+  if (incoming instanceof import_node_http2.Http2ServerRequest) {
+    scheme = incoming.scheme;
+    if (!(scheme === "http" || scheme === "https")) throw new RequestError("Unsupported scheme");
+  } else scheme = incoming.socket && incoming.socket.encrypted ? "https" : "http";
+  try {
+    req[urlKey] = buildUrl(scheme, host, incomingUrl);
+  } catch (e) {
+    if (e instanceof RequestError) throw e;
+    else throw new RequestError("Invalid URL", { cause: e });
+  }
+  return req;
+};
+var defaultContentType = "text/plain; charset=UTF-8";
+var responseCache = /* @__PURE__ */ Symbol("responseCache");
+var getResponseCache = /* @__PURE__ */ Symbol("getResponseCache");
+var cacheKey = /* @__PURE__ */ Symbol("cache");
+var GlobalResponse = global.Response;
+var Response$1 = class Response$12 {
+  #body;
+  #init;
+  [getResponseCache]() {
+    const cache2 = this[cacheKey];
+    const liveHeaders = cache2 && cache2[2] instanceof Headers ? cache2[2] : void 0;
+    delete this[cacheKey];
+    return this[responseCache] ||= new GlobalResponse(this.#body, liveHeaders ? {
+      ...this.#init,
+      headers: liveHeaders
+    } : this.#init);
+  }
+  constructor(body, init) {
+    let headers;
+    this.#body = body;
+    if (init instanceof Response$12) {
+      const cachedGlobalResponse = init[responseCache];
+      if (cachedGlobalResponse) {
+        this.#init = cachedGlobalResponse;
+        this[getResponseCache]();
+        return;
+      } else {
+        this.#init = init.#init;
+        headers = new Headers(init.headers);
+      }
+    } else this.#init = init;
+    if (body == null || typeof body === "string" || typeof body?.getReader !== "undefined" || body instanceof Blob || body instanceof Uint8Array) this[cacheKey] = [
+      init?.status || 200,
+      body ?? null,
+      headers || init?.headers
+    ];
+  }
+  get headers() {
+    const cache2 = this[cacheKey];
+    if (cache2) {
+      if (!(cache2[2] instanceof Headers)) cache2[2] = new Headers(cache2[2] || (cache2[1] === null ? void 0 : { "content-type": defaultContentType }));
+      return cache2[2];
+    }
+    return this[getResponseCache]().headers;
+  }
+  get status() {
+    return this[cacheKey]?.[0] ?? this[getResponseCache]().status;
+  }
+  get ok() {
+    const status = this.status;
+    return status >= 200 && status < 300;
+  }
+};
+[
+  "body",
+  "bodyUsed",
+  "redirected",
+  "statusText",
+  "trailers",
+  "type",
+  "url"
+].forEach((k) => {
+  Object.defineProperty(Response$1.prototype, k, { get() {
+    return this[getResponseCache]()[k];
+  } });
+});
+[
+  "arrayBuffer",
+  "blob",
+  "clone",
+  "formData",
+  "json",
+  "text"
+].forEach((k) => {
+  Object.defineProperty(Response$1.prototype, k, { value: function() {
+    return this[getResponseCache]()[k]();
+  } });
+});
+Object.defineProperty(Response$1.prototype, /* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom"), { value: function(depth, options, inspectFn) {
+  return `Response (lightweight) ${inspectFn({
+    status: this.status,
+    headers: this.headers,
+    ok: this.ok,
+    nativeResponse: this[responseCache]
+  }, {
+    ...options,
+    depth: depth == null ? null : depth - 1
+  })}`;
+} });
+Object.setPrototypeOf(Response$1, GlobalResponse);
+Object.setPrototypeOf(Response$1.prototype, GlobalResponse.prototype);
+var validRedirectUrl = /^https?:\/\/[!#-;=?-[\]_a-z~A-Z]+$/;
+var parseRedirectUrl = (url) => {
+  if (url instanceof URL) return url.href;
+  if (validRedirectUrl.test(url)) return url;
+  return new URL(url).href;
+};
+var validRedirectStatuses = /* @__PURE__ */ new Set([
+  301,
+  302,
+  303,
+  307,
+  308
+]);
+Object.defineProperty(Response$1, "redirect", {
+  value: function redirect(url, status = 302) {
+    if (!validRedirectStatuses.has(status)) throw new RangeError("Invalid status code");
+    return new Response$1(null, {
+      status,
+      headers: { location: parseRedirectUrl(url) }
+    });
+  },
+  writable: true,
+  configurable: true
+});
+Object.defineProperty(Response$1, "json", {
+  value: function json(data, init) {
+    const body = JSON.stringify(data);
+    if (body === void 0) throw new TypeError("The data is not JSON serializable");
+    const initHeaders = init?.headers;
+    let headers;
+    if (initHeaders) {
+      headers = new Headers(initHeaders);
+      if (!headers.has("content-type")) headers.set("content-type", "application/json");
+    } else headers = { "content-type": "application/json" };
+    return new Response$1(body, {
+      status: init?.status ?? 200,
+      statusText: init?.statusText,
+      headers
+    });
+  },
+  writable: true,
+  configurable: true
+});
+async function readWithoutBlocking(readPromise) {
+  return Promise.race([readPromise, Promise.resolve().then(() => Promise.resolve(void 0))]);
+}
+function writeFromReadableStreamDefaultReader(reader, writable, currentReadPromise) {
+  const cancel = (error) => {
+    reader.cancel(error).catch(() => {
+    });
+  };
+  writable.on("close", cancel);
+  writable.on("error", cancel);
+  (currentReadPromise ?? reader.read()).then(flow, handleStreamError);
+  return reader.closed.finally(() => {
+    writable.off("close", cancel);
+    writable.off("error", cancel);
+  });
+  function handleStreamError(error) {
+    if (error) writable.destroy(error);
+  }
+  function onDrain() {
+    reader.read().then(flow, handleStreamError);
+  }
+  function flow({ done, value }) {
+    try {
+      if (done) writable.end();
+      else if (!writable.write(value)) writable.once("drain", onDrain);
+      else return reader.read().then(flow, handleStreamError);
+    } catch (e) {
+      handleStreamError(e);
+    }
+  }
+}
+function writeFromReadableStream(stream, writable) {
+  if (stream.locked) throw new TypeError("ReadableStream is locked.");
+  else if (writable.destroyed) return;
+  return writeFromReadableStreamDefaultReader(stream.getReader(), writable);
+}
+var buildOutgoingHttpHeaders = (headers, defaultContentType2) => {
+  const res = {};
+  if (!(headers instanceof Headers)) headers = new Headers(headers ?? void 0);
+  if (headers.has("set-cookie")) {
+    const cookies = [];
+    for (const [k, v] of headers) if (k === "set-cookie") cookies.push(v);
+    else res[k] = v;
+    if (cookies.length > 0) res["set-cookie"] = cookies;
+  } else for (const [k, v] of headers) res[k] = v;
+  if (defaultContentType2) res["content-type"] ??= defaultContentType2;
+  return res;
+};
+var outgoingEnded = /* @__PURE__ */ Symbol("outgoingEnded");
+var incomingDraining = /* @__PURE__ */ Symbol("incomingDraining");
+var DRAIN_TIMEOUT_MS = 500;
+var MAX_DRAIN_BYTES = 64 * 1024 * 1024;
+var drainIncoming = (incoming) => {
+  const incomingWithDrainState = incoming;
+  if (incoming.destroyed || incomingWithDrainState[incomingDraining]) return;
+  incomingWithDrainState[incomingDraining] = true;
+  if (incoming instanceof import_node_http2.Http2ServerRequest) {
+    try {
+      incoming.stream?.close?.(import_node_http2.constants.NGHTTP2_NO_ERROR);
+    } catch {
+    }
+    return;
+  }
+  let bytesRead = 0;
+  const cleanup = () => {
+    clearTimeout(timer2);
+    incoming.off("data", onData);
+    incoming.off("end", cleanup);
+    incoming.off("error", cleanup);
+  };
+  const forceClose = () => {
+    cleanup();
+    const socket = incoming.socket;
+    if (socket && !socket.destroyed) socket.destroySoon();
+  };
+  const timer2 = setTimeout(forceClose, DRAIN_TIMEOUT_MS);
+  timer2.unref?.();
+  const onData = (chunk) => {
+    bytesRead += chunk.length;
+    if (bytesRead > MAX_DRAIN_BYTES) forceClose();
+  };
+  incoming.on("data", onData);
+  incoming.on("end", cleanup);
+  incoming.on("error", cleanup);
+  incoming.resume();
+};
+var makeCloseHandler = (req, incoming, outgoing, needsBodyCleanup) => () => {
+  if (incoming.errored) req[abortRequest](incoming.errored.toString());
+  else if (!outgoing.writableFinished) req[abortRequest]("Client connection prematurely closed.");
+  if (needsBodyCleanup && !incoming.readableEnded) setTimeout(() => {
+    if (!incoming.readableEnded) setTimeout(() => {
+      drainIncoming(incoming);
+    });
+  });
+};
+var isImmediateCacheableResponse = (res) => {
+  if (!(cacheKey in res)) return false;
+  const body = res[cacheKey][1];
+  return body === null || typeof body === "string" || body instanceof Uint8Array;
+};
+var handleRequestError = () => new Response(null, { status: 400 });
+var handleFetchError = (e) => new Response(null, { status: e instanceof Error && (e.name === "TimeoutError" || e.constructor.name === "TimeoutError") ? 504 : 500 });
+var handleResponseError = (e, outgoing) => {
+  const err = e instanceof Error ? e : new Error("unknown error", { cause: e });
+  if (err.code === "ERR_STREAM_PREMATURE_CLOSE") console.info("The user aborted a request.");
+  else {
+    console.error(e);
+    if (!outgoing.headersSent) outgoing.writeHead(500, { "Content-Type": "text/plain" });
+    outgoing.end(`Error: ${err.message}`);
+    outgoing.destroy(err);
+  }
+};
+var flushHeaders = (outgoing) => {
+  if ("flushHeaders" in outgoing && outgoing.writable) outgoing.flushHeaders();
+};
+var responseViaCache = async (res, outgoing) => {
+  let [status, body, header] = res[cacheKey];
+  if (!header) {
+    if (body === null) {
+      outgoing.writeHead(status);
+      outgoing.end();
+    } else if (typeof body === "string") {
+      outgoing.writeHead(status, {
+        "Content-Type": defaultContentType,
+        "Content-Length": Buffer.byteLength(body)
+      });
+      outgoing.end(body);
+    } else if (body instanceof Uint8Array) {
+      outgoing.writeHead(status, {
+        "Content-Type": defaultContentType,
+        "Content-Length": body.byteLength
+      });
+      outgoing.end(body);
+    } else if (body instanceof Blob) {
+      outgoing.writeHead(status, {
+        "Content-Type": defaultContentType,
+        "Content-Length": body.size
+      });
+      outgoing.end(new Uint8Array(await body.arrayBuffer()));
+    } else {
+      outgoing.writeHead(status, { "Content-Type": defaultContentType });
+      flushHeaders(outgoing);
+      await writeFromReadableStream(body, outgoing)?.catch((e) => handleResponseError(e, outgoing));
+    }
+    outgoing[outgoingEnded]?.();
+    return;
+  }
+  let hasContentLength = false;
+  if (header instanceof Headers) {
+    hasContentLength = header.has("content-length");
+    header = buildOutgoingHttpHeaders(header, body === null ? void 0 : defaultContentType);
+  } else if (Array.isArray(header)) {
+    const headerObj = new Headers(header);
+    hasContentLength = headerObj.has("content-length");
+    header = buildOutgoingHttpHeaders(headerObj, body === null ? void 0 : defaultContentType);
+  } else for (const key in header) if (key.length === 14 && key.toLowerCase() === "content-length") {
+    hasContentLength = true;
+    break;
+  }
+  if (!hasContentLength) {
+    if (typeof body === "string") header["Content-Length"] = Buffer.byteLength(body);
+    else if (body instanceof Uint8Array) header["Content-Length"] = body.byteLength;
+    else if (body instanceof Blob) header["Content-Length"] = body.size;
+  }
+  outgoing.writeHead(status, header);
+  if (body == null) outgoing.end();
+  else if (typeof body === "string" || body instanceof Uint8Array) outgoing.end(body);
+  else if (body instanceof Blob) outgoing.end(new Uint8Array(await body.arrayBuffer()));
+  else {
+    flushHeaders(outgoing);
+    await writeFromReadableStream(body, outgoing)?.catch((e) => handleResponseError(e, outgoing));
+  }
+  outgoing[outgoingEnded]?.();
+};
+var isPromise = (res) => typeof res.then === "function";
+var responseViaResponseObject = async (res, outgoing, options = {}) => {
+  if (isPromise(res)) if (options.errorHandler) try {
+    res = await res;
+  } catch (err) {
+    const errRes = await options.errorHandler(err);
+    if (!errRes) return;
+    res = errRes;
+  }
+  else res = await res.catch(handleFetchError);
+  if (cacheKey in res) return responseViaCache(res, outgoing);
+  const resHeaderRecord = buildOutgoingHttpHeaders(res.headers, res.body === null ? void 0 : defaultContentType);
+  if (res.body) {
+    const reader = res.body.getReader();
+    const values2 = [];
+    let done = false;
+    let currentReadPromise = void 0;
+    if (resHeaderRecord["transfer-encoding"] !== "chunked") {
+      let maxReadCount = 2;
+      for (let i = 0; i < maxReadCount; i++) {
+        currentReadPromise ||= reader.read();
+        const chunk = await readWithoutBlocking(currentReadPromise).catch((e) => {
+          console.error(e);
+          done = true;
+        });
+        if (!chunk) {
+          if (i === 1) {
+            await new Promise((resolve) => setTimeout(resolve));
+            maxReadCount = 3;
+            continue;
+          }
+          break;
+        }
+        currentReadPromise = void 0;
+        if (chunk.value) values2.push(chunk.value);
+        if (chunk.done) {
+          done = true;
+          break;
+        }
+      }
+      if (done && !("content-length" in resHeaderRecord)) resHeaderRecord["content-length"] = values2.reduce((acc, value) => acc + value.length, 0);
+    }
+    outgoing.writeHead(res.status, resHeaderRecord);
+    values2.forEach((value) => {
+      outgoing.write(value);
+    });
+    if (done) outgoing.end();
+    else {
+      if (values2.length === 0) flushHeaders(outgoing);
+      await writeFromReadableStreamDefaultReader(reader, outgoing, currentReadPromise);
+    }
+  } else if (resHeaderRecord[X_ALREADY_SENT]) {
+  } else {
+    outgoing.writeHead(res.status, resHeaderRecord);
+    outgoing.end();
+  }
+  outgoing[outgoingEnded]?.();
+};
+var getRequestListener = (fetchCallback, options = {}) => {
+  const autoCleanupIncoming = options.autoCleanupIncoming ?? true;
+  if (options.overrideGlobalObjects !== false && global.Request !== Request$1) {
+    Object.defineProperty(global, "Request", { value: Request$1 });
+    Object.defineProperty(global, "Response", { value: Response$1 });
+  }
+  return async (incoming, outgoing) => {
+    let res, req;
+    let needsBodyCleanup = false;
+    let closeHandlerAttached = false;
+    const ensureCloseHandler = () => {
+      if (!req || closeHandlerAttached) return;
+      closeHandlerAttached = true;
+      outgoing.on("close", makeCloseHandler(req, incoming, outgoing, needsBodyCleanup));
+    };
+    try {
+      req = newRequest(incoming, options.hostname);
+      needsBodyCleanup = autoCleanupIncoming && !(incoming.method === "GET" || incoming.method === "HEAD");
+      if (needsBodyCleanup) {
+        incoming[wrapBodyStream] = true;
+        if (incoming instanceof import_node_http2.Http2ServerRequest) outgoing[outgoingEnded] = () => {
+          if (!incoming.readableEnded) setTimeout(() => {
+            if (!incoming.readableEnded) setTimeout(() => {
+              incoming.destroy();
+              outgoing.destroy();
+            });
+          });
+        };
+      }
+      res = fetchCallback(req, {
+        incoming,
+        outgoing
+      });
+      if (!isPromise(res) && isImmediateCacheableResponse(res)) {
+        if (needsBodyCleanup && !incoming.readableEnded) outgoing.once("finish", () => {
+          if (!incoming.readableEnded) drainIncoming(incoming);
+        });
+        return responseViaCache(res, outgoing);
+      }
+      ensureCloseHandler();
+    } catch (e) {
+      if (!res) if (options.errorHandler) {
+        ensureCloseHandler();
+        res = await options.errorHandler(req ? e : toRequestError(e));
+        if (!res) return;
+      } else if (!req) res = handleRequestError();
+      else res = handleFetchError(e);
+      else return handleResponseError(e, outgoing);
+    }
+    try {
+      return await responseViaResponseObject(res, outgoing, options);
+    } catch (e) {
+      return handleResponseError(e, outgoing);
+    }
+  };
+};
+var CloseEvent = globalThis.CloseEvent ?? class extends Event {
+  #eventInitDict;
+  constructor(type, eventInitDict = {}) {
+    super(type, eventInitDict);
+    this.#eventInitDict = eventInitDict;
+  }
+  get wasClean() {
+    return this.#eventInitDict.wasClean ?? false;
+  }
+  get code() {
+    return this.#eventInitDict.code ?? 0;
+  }
+  get reason() {
+    return this.#eventInitDict.reason ?? "";
+  }
+};
+var generateConnectionSymbol = () => /* @__PURE__ */ Symbol("connection");
+var CONNECTION_SYMBOL_KEY = /* @__PURE__ */ Symbol("CONNECTION_SYMBOL_KEY");
+var WAIT_FOR_WEBSOCKET_SYMBOL = /* @__PURE__ */ Symbol("WAIT_FOR_WEBSOCKET_SYMBOL");
+var upgradeWebSocket = defineWebSocketHelper(async (c, events, options) => {
+  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") return;
+  const env = c.env;
+  const waitForWebSocket = env[WAIT_FOR_WEBSOCKET_SYMBOL];
+  if (!waitForWebSocket || !env.incoming) return new Response(null, { status: 500 });
+  const connectionSymbol = generateConnectionSymbol();
+  env[CONNECTION_SYMBOL_KEY] = connectionSymbol;
+  (async () => {
+    const ws = await waitForWebSocket(env.incoming, connectionSymbol);
+    const messagesReceivedInStarting = [];
+    const bufferMessage = (data, isBinary) => {
+      messagesReceivedInStarting.push([data, isBinary]);
+    };
+    ws.on("message", bufferMessage);
+    const ctx = {
+      binaryType: "arraybuffer",
+      close(code, reason) {
+        ws.close(code, reason);
+      },
+      protocol: ws.protocol,
+      raw: ws,
+      get readyState() {
+        return ws.readyState;
+      },
+      send(source, opts) {
+        ws.send(source, { compress: opts?.compress });
+      },
+      url: new URL(c.req.url)
+    };
+    try {
+      events?.onOpen?.(new Event("open"), ctx);
+    } catch (e) {
+      (options?.onError ?? console.error)(e);
+    }
+    const handleMessage = (data, isBinary) => {
+      const datas = Array.isArray(data) ? data : [data];
+      for (const data2 of datas) try {
+        events?.onMessage?.(new MessageEvent("message", { data: isBinary ? data2 instanceof ArrayBuffer ? data2 : data2.buffer.slice(data2.byteOffset, data2.byteOffset + data2.byteLength) : typeof data2 === "string" ? data2 : Buffer.from(data2).toString("utf-8") }), ctx);
+      } catch (e) {
+        (options?.onError ?? console.error)(e);
+      }
+    };
+    ws.off("message", bufferMessage);
+    for (const message2 of messagesReceivedInStarting) handleMessage(...message2);
+    ws.on("message", (data, isBinary) => {
+      handleMessage(data, isBinary);
+    });
+    ws.on("close", (code, reason) => {
+      try {
+        events?.onClose?.(new CloseEvent("close", {
+          code,
+          reason: reason.toString()
+        }), ctx);
+      } catch (e) {
+        (options?.onError ?? console.error)(e);
+      }
+    });
+    ws.on("error", (error) => {
+      try {
+        events?.onError?.(new ErrorEvent("error", { error }), ctx);
+      } catch (e) {
+        (options?.onError ?? console.error)(e);
+      }
+    });
+  })();
+  return new Response();
+});
 
 // node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
@@ -51,8 +1007,8 @@ var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
 var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
   const { all = false, dot = false } = options;
   const headers = request instanceof HonoRequest ? request.raw.headers : request.headers;
-  const contentType = headers.get("Content-Type");
-  if (contentType?.startsWith("multipart/form-data") || contentType?.startsWith("application/x-www-form-urlencoded")) {
+  const contentType2 = headers.get("Content-Type");
+  if (contentType2?.startsWith("multipart/form-data") || contentType2?.startsWith("application/x-www-form-urlencoded")) {
     return parseFormData(request, { all, dot });
   }
   return {};
@@ -160,15 +1116,15 @@ var getPattern = (label, next) => {
   }
   const match2 = label.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
   if (match2) {
-    const cacheKey = `${label}#${next}`;
-    if (!patternCache[cacheKey]) {
+    const cacheKey2 = `${label}#${next}`;
+    if (!patternCache[cacheKey2]) {
       if (match2[2]) {
-        patternCache[cacheKey] = next && next[0] !== ":" && next[0] !== "*" ? [cacheKey, match2[1], new RegExp(`^${match2[2]}(?=/${next})`)] : [label, match2[1], new RegExp(`^${match2[2]}$`)];
+        patternCache[cacheKey2] = next && next[0] !== ":" && next[0] !== "*" ? [cacheKey2, match2[1], new RegExp(`^${match2[2]}(?=/${next})`)] : [label, match2[1], new RegExp(`^${match2[2]}$`)];
       } else {
-        patternCache[cacheKey] = [label, match2[1], true];
+        patternCache[cacheKey2] = [label, match2[1], true];
       }
     }
-    return patternCache[cacheKey];
+    return patternCache[cacheKey2];
   }
   return null;
 };
@@ -650,9 +1606,9 @@ var resolveCallback = async (str, phase, preserveCallbacks, context, buffer2) =>
 
 // node_modules/hono/dist/context.js
 var TEXT_PLAIN = "text/plain; charset=UTF-8";
-var setDefaultContentType = (contentType, headers) => {
+var setDefaultContentType = (contentType2, headers) => {
   return {
-    "Content-Type": contentType,
+    "Content-Type": contentType2,
     ...headers
   };
 };
@@ -3475,7 +4431,7 @@ var SignJWT = class {
 };
 
 // node_modules/bcryptjs/index.js
-import nodeCrypto from "crypto";
+var import_crypto = __toESM(require("crypto"), 1);
 var randomFallback = null;
 function randomBytes(len) {
   try {
@@ -3483,7 +4439,7 @@ function randomBytes(len) {
   } catch {
   }
   try {
-    return nodeCrypto.randomBytes(len);
+    return import_crypto.default.randomBytes(len);
   } catch {
   }
   if (!randomFallback) {
@@ -5243,8 +6199,8 @@ function genReferralCode() {
 }
 
 // node_modules/postgres/src/index.js
-import os from "os";
-import fs from "fs";
+var import_os = __toESM(require("os"), 1);
+var import_fs = __toESM(require("fs"), 1);
 
 // node_modules/postgres/src/query.js
 var originCache = /* @__PURE__ */ new Map();
@@ -5720,11 +6676,11 @@ var kebab = { ...toKebab };
 kebab.column.to = fromKebab;
 
 // node_modules/postgres/src/connection.js
-import net from "net";
-import tls from "tls";
-import crypto2 from "crypto";
-import Stream from "stream";
-import { performance } from "perf_hooks";
+var import_net = __toESM(require("net"), 1);
+var import_tls = __toESM(require("tls"), 1);
+var import_crypto2 = __toESM(require("crypto"), 1);
+var import_stream = __toESM(require("stream"), 1);
+var import_perf_hooks = require("perf_hooks");
 
 // node_modules/postgres/src/result.js
 var Result = class extends Array {
@@ -5936,7 +6892,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
   async function createSocket() {
     let x;
     try {
-      x = options.socket ? await Promise.resolve(options.socket(options)) : new net.Socket();
+      x = options.socket ? await Promise.resolve(options.socket(options)) : new import_net.default.Socket();
     } catch (e) {
       error(e);
       return;
@@ -6038,7 +6994,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     }
     const options2 = {
       socket,
-      servername: net.isIP(socket.host) ? void 0 : socket.host
+      servername: import_net.default.isIP(socket.host) ? void 0 : socket.host
     };
     if (sslnegotiation === "direct")
       options2.ALPNProtocols = ["postgresql"];
@@ -6047,7 +7003,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     else if (typeof ssl === "object")
       Object.assign(options2, ssl);
     socket.removeAllListeners();
-    socket = tls.connect(options2);
+    socket = import_tls.default.connect(options2);
     socket.on("secureConnect", connected);
     socket.on("error", error);
     socket.on("close", closed);
@@ -6101,7 +7057,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     hostIndex = (hostIndex + 1) % port.length;
   }
   function reconnect() {
-    setTimeout(connect, closedTime ? Math.max(0, closedTime + delay - performance.now()) : 0);
+    setTimeout(connect, closedTime ? Math.max(0, closedTime + delay - import_perf_hooks.performance.now()) : 0);
   }
   function connected() {
     try {
@@ -6174,7 +7130,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     if (initial)
       return reconnect();
     !hadError && (query || sent.length) && error(Errors.connection("CONNECTION_CLOSED", options, socket));
-    closedTime = performance.now();
+    closedTime = import_perf_hooks.performance.now();
     hadError && options.shared.retries++;
     delay = (typeof backoff2 === "function" ? backoff2(options.shared.retries) : backoff2) * 1e3;
     onclose(connection2, Errors.connection("CONNECTION_CLOSED", options, socket));
@@ -6399,14 +7355,14 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     );
   }
   async function SASL() {
-    nonce = (await crypto2.randomBytes(18)).toString("base64");
+    nonce = (await import_crypto2.default.randomBytes(18)).toString("base64");
     bytes_default().p().str("SCRAM-SHA-256" + bytes_default.N);
     const i = bytes_default.i;
     write(bytes_default.inc(4).str("n,,n=*,r=" + nonce).i32(bytes_default.i - i - 4, i).end());
   }
   async function SASLContinue(x) {
     const res = x.toString("utf8", 9).split(",").reduce((acc, x2) => (acc[x2[0]] = x2.slice(2), acc), {});
-    const saltedPassword = await crypto2.pbkdf2Sync(
+    const saltedPassword = await import_crypto2.default.pbkdf2Sync(
       await Pass(),
       Buffer.from(res.s, "base64"),
       parseInt(res.i),
@@ -6517,7 +7473,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     query.resolve(result);
   }
   function CopyInResponse() {
-    stream = new Stream.Writable({
+    stream = new import_stream.default.Writable({
       autoDestroy: true,
       write(chunk2, encoding, callback) {
         socket.write(bytes_default().d().raw(chunk2).end(), callback);
@@ -6536,7 +7492,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     query.resolve(stream);
   }
   function CopyOutResponse() {
-    stream = new Stream.Readable({
+    stream = new import_stream.default.Readable({
       read() {
         socket.resume();
       }
@@ -6544,7 +7500,7 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
     query.resolve(stream);
   }
   function CopyBothResponse() {
-    stream = new Stream.Duplex({
+    stream = new import_stream.default.Duplex({
       autoDestroy: true,
       read() {
         socket.resume();
@@ -6648,13 +7604,13 @@ function parseError(x) {
   return error;
 }
 function md5(x) {
-  return crypto2.createHash("md5").update(x).digest("hex");
+  return import_crypto2.default.createHash("md5").update(x).digest("hex");
 }
 function hmac(key, x) {
-  return crypto2.createHmac("sha256", key).update(x).digest();
+  return import_crypto2.default.createHmac("sha256", key).update(x).digest();
 }
 function sha256(x) {
-  return crypto2.createHash("sha256").update(x).digest();
+  return import_crypto2.default.createHash("sha256").update(x).digest();
 }
 function xor(a, b2) {
   const length = Math.max(a.length, b2.length);
@@ -6896,7 +7852,7 @@ function parseEvent(x) {
 }
 
 // node_modules/postgres/src/large.js
-import Stream2 from "stream";
+var import_stream2 = __toESM(require("stream"), 1);
 function largeObject(sql, oid, mode = 131072 | 262144) {
   return new Promise(async (resolve, reject) => {
     await sql.begin(async (sql2) => {
@@ -6933,7 +7889,7 @@ function largeObject(sql, oid, mode = 131072 | 262144) {
       } = {}) {
         let max = end - start;
         start && await lo.seek(start);
-        return new Stream2.Readable({
+        return new import_stream2.default.Readable({
           highWaterMark,
           async read(size2) {
             const l = size2 > max ? size2 - max : size2;
@@ -6950,7 +7906,7 @@ function largeObject(sql, oid, mode = 131072 | 262144) {
         start = 0
       } = {}) {
         start && await lo.seek(start);
-        return new Stream2.Writable({
+        return new import_stream2.default.Writable({
           highWaterMark,
           write(chunk, encoding, callback) {
             lo.write(chunk).then(() => callback(), callback);
@@ -7017,7 +7973,7 @@ function Postgres(a, b2) {
       unsafe,
       notify,
       array,
-      json,
+      json: json2,
       file
     });
     return sql2;
@@ -7040,7 +7996,7 @@ function Postgres(a, b2) {
     function file(path, args = [], options2 = {}) {
       arguments.length === 2 && !Array.isArray(args) && (options2 = args, args = []);
       const query = new Query([], args, (query2) => {
-        fs.readFile(path, "utf8", (err, string) => {
+        import_fs.default.readFile(path, "utf8", (err, string) => {
           if (err)
             return query2.reject(err);
           query2.strings = [string];
@@ -7054,7 +8010,7 @@ function Postgres(a, b2) {
     }
   }
   async function listen(name, fn, onlisten) {
-    const listener = { fn, onlisten };
+    const listener2 = { fn, onlisten };
     const sql2 = listen.sql || (listen.sql = Postgres({
       ...options,
       max: 1,
@@ -7074,19 +8030,19 @@ function Postgres(a, b2) {
     }));
     const channels = listen.channels || (listen.channels = {}), exists = name in channels;
     if (exists) {
-      channels[name].listeners.push(listener);
+      channels[name].listeners.push(listener2);
       const result2 = await channels[name].result;
-      listener.onlisten && listener.onlisten();
+      listener2.onlisten && listener2.onlisten();
       return { state: result2.state, unlisten };
     }
-    channels[name] = { result: sql2`listen ${sql2.unsafe('"' + name.replace(/"/g, '""') + '"')}`, listeners: [listener] };
+    channels[name] = { result: sql2`listen ${sql2.unsafe('"' + name.replace(/"/g, '""') + '"')}`, listeners: [listener2] };
     const result = await channels[name].result;
-    listener.onlisten && listener.onlisten();
+    listener2.onlisten && listener2.onlisten();
     return { state: result.state, unlisten };
     async function unlisten() {
       if (name in channels === false)
         return;
-      channels[name].listeners = channels[name].listeners.filter((x) => x !== listener);
+      channels[name].listeners = channels[name].listeners.filter((x) => x !== listener2);
       if (channels[name].listeners.length)
         return;
       delete channels[name];
@@ -7174,7 +8130,7 @@ function Postgres(a, b2) {
     queue === open ? c.idleTimer.start() : c.idleTimer.cancel();
     return c;
   }
-  function json(x) {
+  function json2(x) {
     return new Parameter(x, 3802);
   }
   function array(x, type) {
@@ -7358,7 +8314,7 @@ function parseUrl(url) {
 }
 function osUsername() {
   try {
-    return os.userInfo().username;
+    return import_os.default.userInfo().username;
   } catch (_) {
     return process.env.USERNAME || process.env.USER || process.env.LOGNAME;
   }
@@ -7762,8 +8718,8 @@ auth.post("/register", async (c) => {
     ).first();
     isCompanyReferral = true;
   }
-  const config2 = await c.env.DB.prepare("SELECT referralBonus FROM site_config LIMIT 1").first();
-  const referralBonus = config2?.referralBonus ?? 500;
+  const config = await c.env.DB.prepare("SELECT referralBonus FROM site_config LIMIT 1").first();
+  const referralBonus = config?.referralBonus ?? 500;
   const hashed = await hashPassword(password);
   const userId = genId("u-");
   let newCode = genReferralCode();
@@ -8101,8 +9057,8 @@ me.post("/withdraw", async (c) => {
   if (!amount || amount <= 0) return c.json({ error: "\uCD9C\uAE08 \uAE08\uC561\uC744 \uC62C\uBC14\uB974\uAC8C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
   const dbUser = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
   if (!dbUser) return c.json({ error: "\uC0AC\uC6A9\uC790 \uC815\uBCF4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
-  const config2 = await c.env.DB.prepare("SELECT minWithdrawAmount FROM site_config LIMIT 1").first();
-  const minAmount = config2?.minWithdrawAmount ?? 1e4;
+  const config = await c.env.DB.prepare("SELECT minWithdrawAmount FROM site_config LIMIT 1").first();
+  const minAmount = config?.minWithdrawAmount ?? 1e4;
   if (amount < minAmount) {
     return c.json({ error: `\uCD5C\uC18C \uCD9C\uAE08 \uAE08\uC561\uC740 ${minAmount.toLocaleString()}P\uC785\uB2C8\uB2E4.` }, 400);
   }
@@ -8659,8 +9615,8 @@ admin.post("/withdrawals/:id/process", async (c) => {
   return c.json({ ok: true, status: "COMPLETED" });
 });
 admin.get("/config", async (c) => {
-  const config2 = await c.env.DB.prepare("SELECT * FROM site_config LIMIT 1").first();
-  return c.json({ config: config2 });
+  const config = await c.env.DB.prepare("SELECT * FROM site_config LIMIT 1").first();
+  return c.json({ config });
 });
 admin.put("/config", async (c) => {
   const b2 = await c.req.json().catch(() => null);
@@ -8743,10 +9699,10 @@ api.route("/products", products_default);
 api.route("/me", me_default);
 api.route("/admin", admin_default);
 api.get("/config/public", async (c) => {
-  const config2 = await c.env.DB.prepare(
+  const config = await c.env.DB.prepare(
     "SELECT defaultLosingReward, minWithdrawAmount, referralBonus FROM site_config LIMIT 1"
   ).first();
-  return c.json({ config: config2 });
+  return c.json({ config });
 });
 app.route("/api", api);
 app.get("*", (c) => {
@@ -8755,36 +9711,7 @@ app.get("*", (c) => {
 var src_default2 = app;
 
 // server/index.ts
-var config = {
-  runtime: "nodejs"
-};
-var _db = null;
-function getEnv() {
-  if (!_db) {
-    const url = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
-    _db = createDb(url);
-  }
-  return {
-    DB: _db,
-    JWT_SECRET: process.env.JWT_SECRET || "dev-insecure-secret-change-me"
-  };
+var listener = getRequestListener(src_default2.fetch);
+function handler(req, res) {
+  return listener(req, res);
 }
-function handler(req) {
-  const url = new URL(req.url);
-  if (url.pathname === "/__health") {
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        hasDbUrl: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
-        hasJwt: Boolean(process.env.JWT_SECRET),
-        node: process.version
-      }),
-      { headers: { "content-type": "application/json" } }
-    );
-  }
-  return src_default2.fetch(req, getEnv());
-}
-export {
-  config,
-  handler as default
-};

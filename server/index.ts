@@ -1,43 +1,18 @@
 // Vercel Functions 진입점 (Node.js 런타임)
-// 모든 요청을 Hono 앱으로 위임한다.
+//
+// Vercel Node 런타임은 Node 표준 (req, res) => void 핸들러를 가장 안정적으로 인식한다.
+// Web 표준 Request/Response 핸들러(ESM)는 환경에 따라 FUNCTION_INVOCATION_FAILED 가
+// 발생할 수 있으므로, @hono/node-server 의 getRequestListener 로 Hono 앱을
+// Node http 핸들러로 변환해 내보낸다.
+//
 // Cloudflare 와 달리 Vercel/Node 에서는 c.env 가 자동 주입되지 않으므로,
-// app.fetch 의 두 번째 인자(env)로 DB/JWT_SECRET 을 직접 전달한다.
+// DB/JWT_SECRET 주입은 src/lib/middleware.ts 의 envMiddleware(fallback) 가 담당한다.
+import { getRequestListener } from '@hono/node-server'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import app from '../src/index'
-import { createDb } from '../src/lib/db'
 
-export const config = {
-  runtime: 'nodejs',
-}
+const listener = getRequestListener(app.fetch)
 
-// postgres.js 클라이언트는 createDb 내부(모듈 스코프)에 캐시되어 콜드스타트 간 재사용된다.
-// DB 인스턴스는 실제 사용 시점까지 lazy 하게 생성한다.
-// (DATABASE_URL 미설정이라도 정적 SPA 셸 등 DB 미사용 경로는 정상 응답해야 하므로
-//  여기서 즉시 throw 하지 않는다. 실제 쿼리 시점에 connect 가 실패하면 그때 에러가 난다.)
-let _db: ReturnType<typeof createDb> | null = null
-function getEnv() {
-  if (!_db) {
-    const url = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || ''
-    _db = createDb(url)
-  }
-  return {
-    DB: _db,
-    JWT_SECRET: process.env.JWT_SECRET || 'dev-insecure-secret-change-me',
-  }
-}
-
-export default function handler(req: Request) {
-  // DB/앱과 완전히 분리된 헬스체크: 함수 자체의 생존/콜드스타트 확인용
-  const url = new URL(req.url)
-  if (url.pathname === '/__health') {
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        hasDbUrl: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
-        hasJwt: Boolean(process.env.JWT_SECRET),
-        node: process.version,
-      }),
-      { headers: { 'content-type': 'application/json' } }
-    )
-  }
-  return app.fetch(req, getEnv())
+export default function handler(req: IncomingMessage, res: ServerResponse) {
+  return listener(req, res)
 }
