@@ -26,5 +26,18 @@ function getEnv() {
 }
 
 export default function handler(req: Request) {
+  // DB/앱과 완전히 분리된 헬스체크: 함수 자체의 생존/콜드스타트 확인용
+  const url = new URL(req.url)
+  if (url.pathname === '/__health') {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        hasDbUrl: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
+        hasJwt: Boolean(process.env.JWT_SECRET),
+        node: process.version,
+      }),
+      { headers: { 'content-type': 'application/json' } }
+    )
+  }
   return app.fetch(req, getEnv())
 }

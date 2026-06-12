@@ -8770,6 +8770,18 @@ function getEnv() {
   };
 }
 function handler(req) {
+  const url = new URL(req.url);
+  if (url.pathname === "/__health") {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        hasDbUrl: Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL),
+        hasJwt: Boolean(process.env.JWT_SECRET),
+        node: process.version
+      }),
+      { headers: { "content-type": "application/json" } }
+    );
+  }
   return src_default2.fetch(req, getEnv());
 }
 export {
