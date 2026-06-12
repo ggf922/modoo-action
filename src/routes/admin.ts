@@ -19,7 +19,7 @@ admin.get('/stats', async (c) => {
   const pendingCharges = (await db.prepare("SELECT COUNT(*) AS c FROM charge_requests WHERE status='PENDING'").first<{ c: number }>())?.c ?? 0
   const pendingShipments = (await db.prepare("SELECT COUNT(*) AS c FROM winners WHERE shippingStatus IN ('SUBMITTED')").first<{ c: number }>())?.c ?? 0
   const totalCharged = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='CHARGE'").first<{ s: number }>())?.s ?? 0
-  const totalRewards = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='REWARD' AND pointKind='BALANCE'").first<{ s: number }>())?.s ?? 0
+  const totalRewards = (await db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM point_history WHERE type='REWARD' AND amount > 0").first<{ s: number }>())?.s ?? 0
 
   // 카테고리별 상품 수 (차트용)
   const byCategory = (await db.prepare('SELECT category, COUNT(*) AS cnt FROM products GROUP BY category').all()).results
@@ -214,13 +214,13 @@ admin.get('/members', async (c) => {
 admin.post('/members/:id/adjust', async (c) => {
   const id = c.req.param('id')
   const b = await c.req.json().catch(() => null)
-  const kind = b?.kind as 'AUCTION' | 'BALANCE' | 'WAGE'
+  const kind = b?.kind as 'AUCTION' | 'WAGE'
   const amount = Number(b?.amount)
   const reason = b?.reason ?? '관리자 조정'
-  if (!['AUCTION', 'BALANCE', 'WAGE'].includes(kind)) return c.json({ error: '포인트 종류가 올바르지 않습니다.' }, 400)
+  if (!['AUCTION', 'WAGE'].includes(kind)) return c.json({ error: '포인트 종류가 올바르지 않습니다.' }, 400)
   if (!amount || isNaN(amount)) return c.json({ error: '조정 금액을 입력해주세요.' }, 400)
 
-  const col = kind === 'AUCTION' ? 'auctionPoint' : kind === 'BALANCE' ? 'balancePoint' : 'wagePoint'
+  const col = kind === 'AUCTION' ? 'auctionPoint' : 'wagePoint'
   const target = await c.env.DB.prepare(`SELECT ${col} AS v FROM users WHERE id = ?`).bind(id).first<{ v: number }>()
   if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
   if (target.v + amount < 0) return c.json({ error: '포인트가 음수가 될 수 없습니다.' }, 400)
@@ -254,15 +254,15 @@ admin.post('/members/:id/grade', async (c) => {
 admin.post('/members/grade-grant', async (c) => {
   const b = await c.req.json().catch(() => null)
   const grade = String(b?.grade ?? '')
-  const kind = b?.kind as 'AUCTION' | 'BALANCE' | 'WAGE'
+  const kind = b?.kind as 'AUCTION' | 'WAGE'
   const amount = Number(b?.amount)
   const reason = b?.reason ? String(b.reason).trim() : '등급별 일괄 지급'
 
   if (!GRADES.includes(grade)) return c.json({ error: '올바르지 않은 등급입니다.' }, 400)
-  if (!['AUCTION', 'BALANCE', 'WAGE'].includes(kind)) return c.json({ error: '포인트 종류가 올바르지 않습니다.' }, 400)
+  if (!['AUCTION', 'WAGE'].includes(kind)) return c.json({ error: '포인트 종류가 올바르지 않습니다.' }, 400)
   if (!amount || isNaN(amount) || amount <= 0) return c.json({ error: '지급 금액을 올바르게 입력해주세요.' }, 400)
 
-  const col = kind === 'AUCTION' ? 'auctionPoint' : kind === 'BALANCE' ? 'balancePoint' : 'wagePoint'
+  const col = kind === 'AUCTION' ? 'auctionPoint' : 'wagePoint'
 
   // 대상 회원(해당 등급, 일반 회원만 — 관리자 제외)
   const targets = (await c.env.DB.prepare(
@@ -292,6 +292,42 @@ admin.get('/members/grade-stats', async (c) => {
   for (const g of GRADES) stats[g] = 0
   for (const r of rows) stats[r.grade] = r.cnt
   return c.json({ stats })
+})
+
+// VIP 이상 등급 회원에게 경매포인트 일괄(강제) 지급
+// 대상: VIP, VVIP, 대리점(AGENCY), 총판(DISTRIBUTOR), 이사(DIRECTOR) — 일반회원 제외
+const VIP_PLUS_GRADES = ['VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
+admin.post('/members/grant-vip-auction', async (c) => {
+  const b = await c.req.json().catch(() => null)
+  const amount = Number(b?.amount)
+  const reason = b?.reason ? String(b.reason).trim() : 'VIP 이상 경매P 일괄 지급'
+  if (!amount || isNaN(amount) || amount <= 0) return c.json({ error: '지급 금액을 올바르게 입력해주세요.' }, 400)
+
+  const placeholders = VIP_PLUS_GRADES.map(() => '?').join(',')
+  const targets = (await c.env.DB.prepare(
+    `SELECT id FROM users WHERE role = 'MEMBER' AND grade IN (${placeholders})`
+  ).bind(...VIP_PLUS_GRADES).all<{ id: string }>()).results
+  if (!targets.length) return c.json({ ok: true, count: 0, message: 'VIP 이상 등급 회원이 없습니다.' })
+
+  const stmts: D1PreparedStatement[] = []
+  for (const t of targets) {
+    stmts.push(c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(amount, t.id))
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
+    ).bind(genId('ph-'), t.id, amount, `VIP+ 경매P 일괄지급: ${reason}`))
+  }
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true, count: targets.length, amount })
+})
+
+// VIP 이상 등급 회원 수 (강제 지급 화면용)
+admin.get('/members/vip-plus-count', async (c) => {
+  const placeholders = VIP_PLUS_GRADES.map(() => '?').join(',')
+  const row = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS cnt FROM users WHERE role = 'MEMBER' AND grade IN (${placeholders})`
+  ).bind(...VIP_PLUS_GRADES).first<{ cnt: number }>()
+  return c.json({ count: row?.cnt ?? 0 })
 })
 
 // 단일 회원 상세 (수정 폼용)
@@ -380,8 +416,8 @@ admin.get('/network', async (c) => {
   const db = c.env.DB
   // 전체 회원(관리자 포함)
   const all = (await db.prepare(
-    `SELECT id, name, nickname, role, referrerId, referralCode, createdAt,
-            auctionPoint, balancePoint, wagePoint
+    `SELECT id, name, nickname, role, grade, referrerId, referralCode, createdAt,
+            auctionPoint, wagePoint
      FROM users`
   ).all<any>()).results
 
@@ -496,29 +532,20 @@ admin.post('/withdrawals/:id/process', async (c) => {
     return c.json({ ok: true, status: 'REJECTED' })
   }
 
-  // 승인 → 차감 (잔액 우선, 부족분 임금에서)
-  const u = await c.env.DB.prepare('SELECT balancePoint, wagePoint FROM users WHERE id = ?').bind(wd.userId).first<{ balancePoint: number; wagePoint: number }>()
+  // 승인 → 임금포인트에서 차감 (출금은 임금P만 가능)
+  const u = await c.env.DB.prepare('SELECT wagePoint FROM users WHERE id = ?').bind(wd.userId).first<{ wagePoint: number }>()
   if (!u) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
-  if (u.balancePoint + u.wagePoint < wd.amount) {
-    return c.json({ error: '회원의 출금 가능 포인트가 부족합니다.' }, 400)
+  if (u.wagePoint < wd.amount) {
+    return c.json({ error: '회원의 출금 가능 포인트(임금P)가 부족합니다.' }, 400)
   }
-  const fromBalance = Math.min(u.balancePoint, wd.amount)
-  const fromWage = wd.amount - fromBalance
 
   const stmts: D1PreparedStatement[] = [
-    c.env.DB.prepare('UPDATE users SET balancePoint = balancePoint - ?, wagePoint = wagePoint - ? WHERE id = ?').bind(fromBalance, fromWage, wd.userId),
+    c.env.DB.prepare('UPDATE users SET wagePoint = wagePoint - ? WHERE id = ?').bind(wd.amount, wd.userId),
     c.env.DB.prepare("UPDATE withdrawals SET status='COMPLETED', processedAt=datetime('now') WHERE id=?").bind(id),
-  ]
-  if (fromBalance > 0) {
-    stmts.push(c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt) VALUES (?, ?, 'WITHDRAW', 'BALANCE', ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), wd.userId, -fromBalance, `출금 승인 (잔액)`))
-  }
-  if (fromWage > 0) {
-    stmts.push(c.env.DB.prepare(
+    c.env.DB.prepare(
       `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt) VALUES (?, ?, 'WITHDRAW', 'WAGE', ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), wd.userId, -fromWage, `출금 승인 (임금)`))
-  }
+    ).bind(genId('ph-'), wd.userId, -wd.amount, `출금 승인 (임금)`),
+  ]
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, status: 'COMPLETED' })
 })

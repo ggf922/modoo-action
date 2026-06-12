@@ -115,9 +115,9 @@ me.post('/withdraw', async (c) => {
     return c.json({ error: `최소 출금 금액은 ${minAmount.toLocaleString()}P입니다.` }, 400)
   }
 
-  const withdrawable = dbUser.balancePoint + dbUser.wagePoint
+  const withdrawable = dbUser.wagePoint
   if (amount > withdrawable) {
-    return c.json({ error: `출금 가능 포인트가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
+    return c.json({ error: `출금 가능 포인트(임금P)가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
   }
 
   // 계좌 정보 확인
@@ -169,18 +169,18 @@ me.get('/network', async (c) => {
 
   // 본인 노드
   const root = await c.env.DB.prepare(
-    'SELECT id, name, nickname, createdAt, referralCode FROM users WHERE id = ?'
+    'SELECT id, name, nickname, grade, createdAt, referralCode FROM users WHERE id = ?'
   ).bind(user.id).first()
 
   // BFS로 산하 5단계 수집
-  type Node = { id: string; name: string; nickname: string; createdAt: string; referrerId: string; level: number }
+  type Node = { id: string; name: string; nickname: string; grade: string; createdAt: string; referrerId: string; level: number }
   const nodes: Node[] = []
   let currentLevel = [user.id]
   for (let depth = 1; depth <= 5; depth++) {
     if (currentLevel.length === 0) break
     const placeholders = currentLevel.map(() => '?').join(',')
     const children = (await c.env.DB.prepare(
-      `SELECT id, name, nickname, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
+      `SELECT id, name, nickname, grade, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
     ).bind(...currentLevel).all<Node>()).results
     for (const ch of children) {
       nodes.push({ ...ch, level: depth })

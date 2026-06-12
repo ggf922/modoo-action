@@ -19,7 +19,7 @@ function shuffle<T>(arr: T[]): T[] {
  * 2. 앞에서 winnersCount명 → 당첨자
  * 3. 나머지 → 미당첨자
  * 4. 당첨자: isWinner=true + Winner 레코드 + 자동 구매 처리
- * 5. 미당첨자: balancePoint += losingReward + 내역
+ * 5. 미당첨자: auctionPoint += losingReward + 내역 (미낙찰 보상은 경매포인트로 환급되어 재참여 가능)
  * 6. product.status = DRAWN, endAt = now()
  */
 export async function drawWinners(DB: D1Database, product: ProductRow): Promise<{
@@ -47,7 +47,7 @@ export async function drawWinners(DB: D1Database, product: ProductRow): Promise<
     stmts.push(
       DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'REWARD', 'BALANCE', 0, ?, datetime('now'))`
+         VALUES (?, ?, 'REWARD', 'AUCTION', 0, ?, datetime('now'))`
       ).bind(
         genId('ph-'),
         wb.userId,
@@ -56,15 +56,15 @@ export async function drawWinners(DB: D1Database, product: ProductRow): Promise<
     )
   }
 
-  // 미당첨자 보상
+  // 미당첨자 보상 — 경매포인트로 환급(다시 경매에 사용 가능)
   if (product.losingReward > 0) {
     for (const lb of loserBids) {
-      stmts.push(DB.prepare('UPDATE users SET balancePoint = balancePoint + ? WHERE id = ?').bind(product.losingReward, lb.userId))
+      stmts.push(DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(product.losingReward, lb.userId))
       stmts.push(
         DB.prepare(
           `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-           VALUES (?, ?, 'REWARD', 'BALANCE', ?, ?, datetime('now'))`
-        ).bind(genId('ph-'), lb.userId, product.losingReward, `미당첨 보상: ${product.title}`)
+           VALUES (?, ?, 'REWARD', 'AUCTION', ?, ?, datetime('now'))`
+        ).bind(genId('ph-'), lb.userId, product.losingReward, `미당첨 보상(경매P 환급): ${product.title}`)
       )
     }
   }

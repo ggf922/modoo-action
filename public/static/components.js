@@ -171,15 +171,17 @@ function requireLoginRedirect() {
 
 // ===== 회원 등급 (일반회원/VIP/VVIP/대리점/총판/이사) =====
 const GRADE_INFO = {
-  NORMAL:      { label: '일반회원', icon: 'fa-user',            cls: 'bg-gray-100 text-gray-600' },
-  VIP:         { label: 'VIP',      icon: 'fa-star',            cls: 'bg-amber-100 text-amber-700' },
-  VVIP:        { label: 'VVIP',     icon: 'fa-crown',           cls: 'bg-yellow-100 text-yellow-800' },
-  AGENCY:      { label: '대리점',   icon: 'fa-store',           cls: 'bg-blue-100 text-blue-700' },
-  DISTRIBUTOR: { label: '총판',     icon: 'fa-warehouse',       cls: 'bg-purple-100 text-purple-700' },
-  DIRECTOR:    { label: '이사',     icon: 'fa-user-tie',        cls: 'bg-rose-100 text-rose-700' },
+  NORMAL:      { label: '일반회원', icon: 'fa-user',            cls: 'bg-gray-100 text-gray-600',     color: '#94a3b8' },
+  VIP:         { label: 'VIP',      icon: 'fa-star',            cls: 'bg-amber-100 text-amber-700',   color: '#f59e0b' },
+  VVIP:        { label: 'VVIP',     icon: 'fa-crown',           cls: 'bg-yellow-100 text-yellow-800', color: '#eab308' },
+  AGENCY:      { label: '대리점',   icon: 'fa-store',           cls: 'bg-blue-100 text-blue-700',     color: '#3b82f6' },
+  DISTRIBUTOR: { label: '총판',     icon: 'fa-warehouse',       cls: 'bg-purple-100 text-purple-700', color: '#a855f7' },
+  DIRECTOR:    { label: '이사',     icon: 'fa-user-tie',        cls: 'bg-rose-100 text-rose-700',     color: '#f43f5e' },
 }
 const GRADE_ORDER = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
 function gradeInfo(g) { return GRADE_INFO[g] || GRADE_INFO.NORMAL }
+// 등급별 색상(hex) — SVG 조직도 등에 사용
+function gradeColor(g) { return gradeInfo(g).color }
 // 등급 뱃지 (작은 라벨)
 function gradeBadge(g) {
   const i = gradeInfo(g)
