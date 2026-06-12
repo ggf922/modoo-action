@@ -16,6 +16,8 @@ export type SessionUser = {
   role: 'MEMBER' | 'ADMIN'
 }
 
+export type MemberGrade = 'NORMAL' | 'VIP' | 'VVIP' | 'AGENCY' | 'DISTRIBUTOR' | 'DIRECTOR'
+
 export type UserRow = {
   id: string
   email: string
@@ -24,6 +26,7 @@ export type UserRow = {
   phone: string | null
   nickname: string
   role: 'MEMBER' | 'ADMIN'
+  grade: MemberGrade
   auctionPoint: number
   balancePoint: number
   wagePoint: number

@@ -10,6 +10,7 @@ function adminLayout(active, content) {
     ['/admin', 'fa-gauge', '대시보드'],
     ['/admin/products', 'fa-box', '상품관리'],
     ['/admin/members', 'fa-users', '회원관리'],
+    ['/admin/grade-grant', 'fa-layer-group', '등급지급'],
     ['/admin/charges', 'fa-coins', '충전관리'],
     ['/admin/shipments', 'fa-truck-fast', '배송관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
@@ -360,13 +361,14 @@ async function pageAdminMembers(params, query) {
     <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
       <table class="w-full text-sm min-w-[640px]">
         <thead class="bg-gray-50 text-gray-500 text-xs"><tr>
-          <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">추천인</th>
+          <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">등급</th><th class="px-3 py-2">추천인</th>
           <th class="px-3 py-2">경매P</th><th class="px-3 py-2">잔액P</th><th class="px-3 py-2">임금P</th><th class="px-3 py-2">관리</th>
         </tr></thead>
         <tbody class="divide-y divide-gray-50">
         ${data.members.map(m => `<tr>
           <td class="px-3 py-2"><div class="font-medium">${m.name} ${m.role==='ADMIN'?'<span class="text-xs bg-brand-dark text-white px-1.5 py-0.5 rounded">관리자</span>':''}</div>
             <div class="text-xs text-gray-400">@${m.nickname} · ${m.email}</div><div class="text-xs text-gray-300">코드 ${m.referralCode}</div></td>
+          <td class="px-3 py-2 text-center">${m.role==='ADMIN' ? '<span class="text-xs text-gray-300">-</span>' : gradeBadge(m.grade)}</td>
           <td class="px-3 py-2 text-center text-xs text-gray-500">${m.referrerNickname || '-'}</td>
           <td class="px-3 py-2 text-center font-medium text-brand-orange">${won(m.auctionPoint)}</td>
           <td class="px-3 py-2 text-center font-medium text-green-600">${won(m.balancePoint)}</td>
@@ -390,6 +392,19 @@ async function pageAdminMembers(params, query) {
   })
 }
 
+// 회원 등급 변경/승인
+async function changeGrade(userId) {
+  const sel = document.getElementById('grade-select')
+  if (!sel) return
+  const grade = sel.value
+  try {
+    await api.post('/admin/members/' + userId + '/grade', { grade })
+    toast(gradeInfo(grade).label + ' 등급으로 변경되었습니다.', 'success')
+    closeModal()
+    if (location.hash.startsWith('#/admin/members')) Router.resolve()
+  } catch (err) { toast(errMsg(err), 'error') }
+}
+
 // 회원 상세 정보 (가입 시 입력 항목 전체를 항목별로 정리)
 async function openMemberDetail(userId) {
   let m
@@ -409,9 +424,21 @@ async function openMemberDetail(userId) {
       <div class="w-12 h-12 rounded-full bg-gradient-to-br from-brand-orange to-brand-gold flex items-center justify-center text-white text-xl font-bold shrink-0">${(m.name||'?').charAt(0)}</div>
       <div>
         <h3 class="font-extrabold text-lg leading-tight">${m.name} ${isAdmin?'<span class="text-xs bg-brand-dark text-white px-1.5 py-0.5 rounded align-middle">관리자</span>':''}</h3>
-        <p class="text-sm text-gray-400">@${m.nickname}</p>
+        <p class="text-sm text-gray-400 flex items-center gap-2">@${m.nickname} ${isAdmin ? '' : gradeBadge(m.grade)}</p>
       </div>
     </div>
+
+    ${isAdmin ? '' : `
+    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 mt-2">회원 등급 (승인/변경)</div>
+    <div class="bg-amber-50 rounded-xl px-4 py-3 mb-4">
+      <div class="flex items-center gap-2 mb-2 text-sm text-gray-600">현재 등급: ${gradeBadge(m.grade)}</div>
+      <div class="flex gap-2">
+        <select id="grade-select" class="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange bg-white">
+          ${GRADE_ORDER.map(g => `<option value="${g}" ${g===m.grade?'selected':''}>${gradeInfo(g).label}</option>`).join('')}
+        </select>
+        <button onclick="changeGrade('${m.id}')" class="bg-brand-orange text-white px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap"><i class="fas fa-check"></i> 등급 적용</button>
+      </div>
+    </div>`}
 
     <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 mt-2">가입 정보</div>
     <div class="bg-gray-50 rounded-xl px-4 py-1 mb-4">
@@ -525,6 +552,75 @@ async function doAdjust(userId) {
   try {
     await api.post(`/admin/members/${userId}/adjust`, { kind, amount, reason })
     closeModal(); toast('포인트가 조정되었습니다.', 'success'); pageAdminMembers({}, getQuery())
+  } catch (err) { toast(errMsg(err), 'error') }
+}
+
+// ===== 등급별 포인트 일괄 지급 =====
+async function pageAdminGradeGrant() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  let stats = {}
+  try { stats = (await api.get('/admin/members/grade-stats')).data.stats || {} }
+  catch (err) { toast(errMsg(err), 'error') }
+
+  document.getElementById('app').innerHTML = adminLayout('/admin/grade-grant', `
+    <h2 class="font-bold mb-4"><i class="fas fa-layer-group text-brand-orange"></i> 등급별 포인트 일괄 지급</h2>
+
+    <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
+      <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">등급별 회원 수</div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        ${GRADE_ORDER.map(g => `
+          <div class="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
+            <div>${gradeBadge(g)}</div>
+            <div class="font-extrabold text-gray-700">${stats[g] || 0}<span class="text-xs font-normal text-gray-400">명</span></div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-100 p-5">
+      <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">일괄 지급 설정</div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">대상 등급</label>
+          <select id="gg-grade" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange bg-white">
+            ${GRADE_ORDER.map(g => `<option value="${g}">${gradeInfo(g).label} (${stats[g] || 0}명)</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">포인트 종류</label>
+          <select id="gg-kind" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange bg-white">
+            <option value="AUCTION">경매 참여 포인트</option>
+            <option value="BALANCE">잔액 포인트</option>
+            <option value="WAGE">임금 포인트</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">1인당 지급 금액 (P)</label>
+          <input id="gg-amount" type="number" min="1" placeholder="예: 10000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">사유 (선택)</label>
+          <input id="gg-reason" placeholder="예: 6월 등급별 정기 지급" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+        </div>
+      </div>
+      <button onclick="doGradeGrant()" class="w-full mt-4 bg-brand-orange text-white py-3 rounded-xl font-bold"><i class="fas fa-paper-plane"></i> 해당 등급 회원에게 일괄 지급</button>
+      <p class="text-xs text-gray-400 mt-2 text-center">선택한 등급의 모든 회원에게 동일한 금액이 일괄 지급됩니다.</p>
+    </div>`)
+}
+
+async function doGradeGrant() {
+  const grade = document.getElementById('gg-grade').value
+  const kind = document.getElementById('gg-kind').value
+  const amount = Number(document.getElementById('gg-amount').value)
+  const reason = document.getElementById('gg-reason').value
+  if (!amount || amount <= 0) { toast('지급 금액을 올바르게 입력해주세요.', 'warn'); return }
+  const kindLabel = kind === 'AUCTION' ? '경매P' : kind === 'BALANCE' ? '잔액P' : '임금P'
+  if (!confirm(`[${gradeInfo(grade).label}] 등급 회원에게 ${kindLabel} ${won(amount)}을(를) 일괄 지급하시겠습니까?`)) return
+  try {
+    const { data } = await api.post('/admin/members/grade-grant', { grade, kind, amount, reason })
+    if (data.count === 0) { toast(data.message || '해당 등급의 회원이 없습니다.', 'warn'); return }
+    toast(`${data.count}명에게 ${won(amount)} 일괄 지급 완료`, 'success')
+    pageAdminGradeGrant()
   } catch (err) { toast(errMsg(err), 'error') }
 }
 

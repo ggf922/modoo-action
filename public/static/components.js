@@ -169,6 +169,23 @@ function requireLoginRedirect() {
   Router.navigate('/auth/login')
 }
 
+// ===== 회원 등급 (일반회원/VIP/VVIP/대리점/총판/이사) =====
+const GRADE_INFO = {
+  NORMAL:      { label: '일반회원', icon: 'fa-user',            cls: 'bg-gray-100 text-gray-600' },
+  VIP:         { label: 'VIP',      icon: 'fa-star',            cls: 'bg-amber-100 text-amber-700' },
+  VVIP:        { label: 'VVIP',     icon: 'fa-crown',           cls: 'bg-yellow-100 text-yellow-800' },
+  AGENCY:      { label: '대리점',   icon: 'fa-store',           cls: 'bg-blue-100 text-blue-700' },
+  DISTRIBUTOR: { label: '총판',     icon: 'fa-warehouse',       cls: 'bg-purple-100 text-purple-700' },
+  DIRECTOR:    { label: '이사',     icon: 'fa-user-tie',        cls: 'bg-rose-100 text-rose-700' },
+}
+const GRADE_ORDER = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
+function gradeInfo(g) { return GRADE_INFO[g] || GRADE_INFO.NORMAL }
+// 등급 뱃지 (작은 라벨)
+function gradeBadge(g) {
+  const i = gradeInfo(g)
+  return `<span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${i.cls}"><i class="fas ${i.icon}"></i> ${i.label}</span>`
+}
+
 // ===== 조직도 트리 레이아웃 (서브트리 폭 기반 — 노드/추천인 수가 많아도 절대 겹치지 않음) =====
 // rootId 부터 byParent[parentId] = [children...] 를 따라가며 각 노드의 {x,y,depth} 좌표 계산.
 // 핵심: 각 서브트리가 차지하는 가로 폭(leaf 수 기준)을 먼저 구하고, 형제 서브트리를

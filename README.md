@@ -27,7 +27,8 @@
 | 애니메이션 | Framer Motion | **CSS Keyframes** (pop/confetti/slot) |
 
 ## 🗄️ 데이터 모델 (Cloudflare D1)
-- **users**: 회원(4종 포인트, 추천관계, 계좌, role)
+- **users**: 회원(4종 포인트, 추천관계, 계좌, role, **grade 등급**)
+  - `grade`: 회원 등급 — `NORMAL`(일반회원) / `VIP` / `VVIP` / `AGENCY`(대리점) / `DISTRIBUTOR`(총판) / `DIRECTOR`(이사). 기본값 `NORMAL`, 관리자가 승인·변경
 - **products**: 경매 상품(시중가/시작가/참가비/정원/당첨자수/미당첨보상/상태/**sortOrder**) — `imageUrl`은 TEXT(외부 URL 또는 압축 Base64 이미지 저장), `sortOrder`로 노출 순서 제어
 - **bids**: 참여(userId+productId UNIQUE, isWinner)
 - **winners**: 당첨자(낙찰가 finalPrice)
@@ -73,7 +74,8 @@
 | `#/admin/products` | 상품 목록/순서변경(▲▼)/강제추첨/삭제 | Admin |
 | `#/admin/products/new` | 상품 등록(가격 직접입력 + 이미지 업로드) | Admin |
 | `#/admin/products/:id/edit` | 상품 수정 | Admin |
-| `#/admin/members` | 회원 관리(검색+상세+포인트 조정+수정/삭제) | Admin |
+| `#/admin/members` | 회원 관리(검색+상세+**등급 승인/변경**+포인트 조정+수정/삭제) | Admin |
+| `#/admin/grade-grant` | **등급별 포인트 일괄 지급**(등급별 회원수 통계 + 일괄 지급) | Admin |
 | `#/admin/network` | 전체 조직도(추천인 계보도 SVG 트리) | Admin |
 | `#/admin/charges` | 충전 요청 승인/거절(포인트 지급) | Admin |
 | `#/admin/shipments` | 당첨 상품 배송관리(주소 확인/발송 처리) | Admin |
@@ -93,6 +95,9 @@
 - `GET /api/admin/stats`, 상품 CRUD `/api/admin/products`, `POST /api/admin/products/:id/draw`
 - `POST /api/admin/products/:id/move` (상품 노출 순서 변경 — `{direction:'up'|'down'}`, 인접 상품과 sortOrder 교환)
 - `GET /api/admin/members`, `GET /api/admin/members/:id`, `POST /api/admin/members/:id/adjust`
+- `POST /api/admin/members/:id/grade` (회원 등급 승인/변경 — `{grade}`)
+- `POST /api/admin/members/grade-grant` (등급별 포인트 일괄 지급 — `{grade, kind, amount, reason}`, 해당 등급 회원 전원에게 동일 금액 지급+내역 기록)
+- `GET /api/admin/members/grade-stats` (등급별 회원 수 통계)
 - `PUT /api/admin/members/:id` (정보/추천인 수정), `DELETE /api/admin/members/:id` (삭제+하위 승계)
 - `GET /api/admin/network` (전체 조직도 — 회사 루트 추천인 계보도)
 - `GET /api/admin/withdrawals`, `POST /api/admin/withdrawals/:id/process`
@@ -153,6 +158,8 @@ npm run db:reset
 - **출금 정보 일치 검증**: 출금 신청 시 등록된 **예금주명이 회원 이름과 일치**해야 출금 가능(공백 무시 비교) — 본인 명의 계좌로만 출금하도록 강제
 - **당첨 상품 배송정보 입력**: 내 참여내역(`#/mypage/bids`)의 🏆당첨 항목에 **배송정보 입력** 버튼 → 받는분/연락처/우편번호/주소/상세주소/배송메모 입력 모달. 입력 전 **[반품 불가] 안내를 반드시 표시**(단순 변심·주문착오 등 어떠한 사유로도 반품·교환·환불 불가) + 확인 체크 동의 후 제출. 배송 상태(미입력/입력완료/발송됨/배송완료) 표시, 관리자 **배송관리 탭**에서 주소 확인 후 발송·배송완료 처리(발송 후 회원 수정 차단). 대시보드 **발송 대기 KPI** 추가
 - **조직도 겹침 방지(서브트리 폭 기반 레이아웃)**: 회원마이페이지/관리자 조직도 SVG 트리를 공통 `buildTreeLayout()` 로 교체. 각 서브트리가 차지하는 가로 폭(leaf 수 기준)을 먼저 계산해 형제 서브트리를 나란히 배치 → **추천인·회원 수가 많아져도 노드가 절대 서로 겹치지 않음**(같은 depth 내 최소 간격 ≥ NODE_W 보장)
+- **회원 등급 시스템(일반회원/VIP/VVIP/대리점/총판/이사)**: `users.grade` 컬럼(6단계, 기본 `NORMAL`) 추가. **관리자 회원관리**에서 회원 목록·상세에 등급 배지 표시, 상세 모달의 **등급 선택 → "등급 적용"** 으로 승인·변경(`POST /api/admin/members/:id/grade`). **각 회원 마이페이지** 헤더에 본인 등급 배지 표시(`/api/auth/me` 가 grade 반환). 등급별 색상/아이콘 배지 공통 헬퍼(`gradeBadge`)
+- **등급별 포인트 일괄 지급(관리자)**: 신규 탭 `#/admin/grade-grant` — 등급별 회원 수 통계를 보여주고, **대상 등급·포인트 종류(경매P/잔액P/임금P)·1인당 금액·사유** 입력 후 해당 등급 회원 전원에게 **일괄 지급**(`POST /api/admin/members/grade-grant`, 트랜잭션 + 회원별 포인트 내역 기록). 지급 인원 수 토스트 안내
 - Mobile First 반응형 디자인 · 한국어 UI · 오렌지/골드 테마 · Pretendard 폰트
 
 ## 📋 미구현 / 향후 과제
@@ -163,4 +170,4 @@ npm run db:reset
 ## 📦 배포 상태
 - **플랫폼**: Cloudflare Pages (배포 대기)
 - **로컬 상태**: ✅ 정상 동작 (PM2 + wrangler pages dev + 로컬 D1)
-- **최종 업데이트**: 2026-06-11 (Batch G: **당첨 상품 배송정보 입력 + 반품불가 고지 + 관리자 배송관리** · **조직도 겹침 방지(서브트리 폭 기반 레이아웃)**) / Batch F: 충전 요청·승인 · 포인트 1,000P · 개인정보 동의 · 출금 예금주명 검증
+- **최종 업데이트**: 2026-06-12 (**회원 등급 시스템**: 6단계 등급(일반회원/VIP/VVIP/대리점/총판/이사) · 관리자 등급 승인·변경 · 마이페이지 등급 표시 · **등급별 포인트 일괄 지급**) / Batch G: 당첨 상품 배송정보 입력 + 반품불가 고지 + 관리자 배송관리 · 조직도 겹침 방지

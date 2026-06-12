@@ -196,7 +196,7 @@ admin.patch('/products/:id/settings', async (c) => {
 // ===== 회원 관리 =====
 admin.get('/members', async (c) => {
   const q = c.req.query('q')
-  let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.auctionPoint, u.balancePoint, u.wagePoint,
+  let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.grade, u.auctionPoint, u.balancePoint, u.wagePoint,
                     u.referralCode, u.referrerId, u.createdAt,
                     r.nickname AS referrerNickname
              FROM users u LEFT JOIN users r ON r.id = u.referrerId`
@@ -235,10 +235,69 @@ admin.post('/members/:id/adjust', async (c) => {
   return c.json({ ok: true })
 })
 
+// 회원 등급 변경/승인
+const GRADES = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
+admin.post('/members/:id/grade', async (c) => {
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const grade = String(b?.grade ?? '')
+  if (!GRADES.includes(grade)) return c.json({ error: '올바르지 않은 등급입니다.' }, 400)
+
+  const target = await c.env.DB.prepare('SELECT id, role FROM users WHERE id = ?').bind(id).first<{ id: string; role: string }>()
+  if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+
+  await c.env.DB.prepare("UPDATE users SET grade = ?, updatedAt = datetime('now') WHERE id = ?").bind(grade, id).run()
+  return c.json({ ok: true, grade })
+})
+
+// 등급별 포인트 일괄 지급
+admin.post('/members/grade-grant', async (c) => {
+  const b = await c.req.json().catch(() => null)
+  const grade = String(b?.grade ?? '')
+  const kind = b?.kind as 'AUCTION' | 'BALANCE' | 'WAGE'
+  const amount = Number(b?.amount)
+  const reason = b?.reason ? String(b.reason).trim() : '등급별 일괄 지급'
+
+  if (!GRADES.includes(grade)) return c.json({ error: '올바르지 않은 등급입니다.' }, 400)
+  if (!['AUCTION', 'BALANCE', 'WAGE'].includes(kind)) return c.json({ error: '포인트 종류가 올바르지 않습니다.' }, 400)
+  if (!amount || isNaN(amount) || amount <= 0) return c.json({ error: '지급 금액을 올바르게 입력해주세요.' }, 400)
+
+  const col = kind === 'AUCTION' ? 'auctionPoint' : kind === 'BALANCE' ? 'balancePoint' : 'wagePoint'
+
+  // 대상 회원(해당 등급, 일반 회원만 — 관리자 제외)
+  const targets = (await c.env.DB.prepare(
+    "SELECT id FROM users WHERE grade = ? AND role = 'MEMBER'"
+  ).bind(grade).all<{ id: string }>()).results
+
+  if (!targets.length) return c.json({ ok: true, count: 0, message: '해당 등급의 회원이 없습니다.' })
+
+  const stmts: D1PreparedStatement[] = []
+  for (const t of targets) {
+    stmts.push(c.env.DB.prepare(`UPDATE users SET ${col} = ${col} + ? WHERE id = ?`).bind(amount, t.id))
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'ADMIN_ADJ', ?, ?, ?, datetime('now'))`
+    ).bind(genId('ph-'), t.id, kind, amount, `등급 일괄지급(${grade}): ${reason}`))
+  }
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true, count: targets.length, amount, kind, grade })
+})
+
+// 등급별 회원 수 통계 (일괄 지급 화면용)
+admin.get('/members/grade-stats', async (c) => {
+  const rows = (await c.env.DB.prepare(
+    "SELECT grade, COUNT(*) AS cnt FROM users WHERE role = 'MEMBER' GROUP BY grade"
+  ).all<{ grade: string; cnt: number }>()).results
+  const stats: Record<string, number> = {}
+  for (const g of GRADES) stats[g] = 0
+  for (const r of rows) stats[r.grade] = r.cnt
+  return c.json({ stats })
+})
+
 // 단일 회원 상세 (수정 폼용)
 admin.get('/members/:id', async (c) => {
   const m = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role,
+    `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role, u.grade,
             u.auctionPoint, u.balancePoint, u.wagePoint, u.referralCode, u.referrerId,
             u.bankName, u.bankAccount, u.accountHolder, u.createdAt,
             r.nickname AS referrerNickname, r.name AS referrerName

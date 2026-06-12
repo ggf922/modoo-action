@@ -129,7 +129,10 @@ async function pageMypage() {
   document.getElementById('app').innerHTML = layout(`
   <div class="flex items-center justify-between mb-5">
     <div>
-      <h1 class="text-2xl font-extrabold">${u.nickname}님의 마이페이지</h1>
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="text-2xl font-extrabold">${u.nickname}님의 마이페이지</h1>
+        ${u.role === 'ADMIN' ? '' : gradeBadge(u.grade)}
+      </div>
       <div class="flex flex-wrap items-center gap-2 mt-1.5">
         <span class="text-sm text-gray-400">내 추천코드:</span>
         <button onclick="copyCode('${u.referralCode}')" class="inline-flex items-center gap-1 text-sm font-bold text-brand-orange bg-orange-50 px-2.5 py-1 rounded-lg hover:bg-orange-100 transition">

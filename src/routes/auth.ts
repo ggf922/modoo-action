@@ -195,7 +195,7 @@ auth.post('/logout', (c) => {
 auth.get('/me', requireAuth, async (c) => {
   const sessionUser = c.get('user')!
   const user = await c.env.DB.prepare(
-    `SELECT id, email, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint,
+    `SELECT id, email, name, phone, nickname, role, grade, auctionPoint, balancePoint, wagePoint,
             referralCode, referrerId, bankName, bankAccount, accountHolder, createdAt
      FROM users WHERE id = ?`
   ).bind(sessionUser.id).first()
