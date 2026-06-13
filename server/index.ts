@@ -10,9 +10,44 @@
 import { getRequestListener } from '@hono/node-server'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import app from '../src/index'
+import { createDb } from '../src/lib/db'
 
 const listener = getRequestListener(app.fetch)
 
+// DB 연결 진단용 엔드포인트: 실제 쿼리를 한 번 날려보고 결과/에러를 JSON 으로 반환한다.
+// 비밀번호는 노출하지 않고 호스트/사용자/에러 메시지만 보여준다.
+async function dbDiag(): Promise<any> {
+  const raw = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || ''
+  let host = '(none)', user = '(none)', port = '(none)'
+  try {
+    const u = new URL(raw)
+    host = u.hostname
+    user = u.username
+    port = u.port
+  } catch {}
+  const info: any = { host, user, port, hasUrl: Boolean(raw) }
+  try {
+    const db = createDb(raw)
+    const row = await db.prepare('SELECT count(*)::int AS n FROM users').first<{ n: number }>()
+    info.ok = true
+    info.userCount = row?.n ?? null
+  } catch (e: any) {
+    info.ok = false
+    info.errorName = e?.name ?? null
+    info.errorMessage = String(e?.message ?? e).slice(0, 300)
+    info.errorCode = e?.code ?? null
+  }
+  return info
+}
+
 export default function handler(req: IncomingMessage, res: ServerResponse) {
+  if ((req.url || '').startsWith('/__dbcheck')) {
+    dbDiag().then((info) => {
+      res.statusCode = 200
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(info, null, 2))
+    })
+    return
+  }
   return listener(req, res)
 }

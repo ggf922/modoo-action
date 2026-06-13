@@ -9712,6 +9712,38 @@ var src_default2 = app;
 
 // server/index.ts
 var listener = getRequestListener(src_default2.fetch);
+async function dbDiag() {
+  const raw2 = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+  let host = "(none)", user = "(none)", port = "(none)";
+  try {
+    const u = new URL(raw2);
+    host = u.hostname;
+    user = u.username;
+    port = u.port;
+  } catch {
+  }
+  const info = { host, user, port, hasUrl: Boolean(raw2) };
+  try {
+    const db = createDb(raw2);
+    const row = await db.prepare("SELECT count(*)::int AS n FROM users").first();
+    info.ok = true;
+    info.userCount = row?.n ?? null;
+  } catch (e) {
+    info.ok = false;
+    info.errorName = e?.name ?? null;
+    info.errorMessage = String(e?.message ?? e).slice(0, 300);
+    info.errorCode = e?.code ?? null;
+  }
+  return info;
+}
 function handler(req, res) {
+  if ((req.url || "").startsWith("/__dbcheck")) {
+    dbDiag().then((info) => {
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(info, null, 2));
+    });
+    return;
+  }
   return listener(req, res);
 }
