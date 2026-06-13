@@ -12,6 +12,10 @@ async function pageHome() {
   const hero = `
   <section id="hero" class="relative rounded-3xl overflow-hidden mb-8 bg-gradient-to-br from-brand-orange to-red-500 text-white p-8 sm:p-12">
     <div id="hero-external-links" class="relative z-20 flex flex-wrap gap-2 mb-5 sm:mb-0 sm:absolute sm:top-6 sm:right-6 sm:justify-end">
+      <a href="https://modoomodoo.fun/" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center gap-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:from-purple-600 hover:to-pink-600 transition whitespace-nowrap">
+        <i class="fas fa-wand-magic-sparkles"></i> 낭만 Ai시리즈
+      </a>
       <a href="https://modoomodoo.com/" target="_blank" rel="noopener noreferrer"
          class="inline-flex items-center gap-1.5 bg-white text-brand-orange font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-orange-50 transition whitespace-nowrap">
         <i class="fas fa-store"></i> 모두모두 쇼핑몰
