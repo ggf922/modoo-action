@@ -73,6 +73,13 @@ const I18N = {
       const t = this.lookup(node.getAttribute('placeholder'))
       if (t) node.setAttribute('placeholder', t)
     }
+    // 자손의 placeholder 속성도 번역
+    if (node.querySelectorAll) {
+      node.querySelectorAll('[placeholder]').forEach(el => {
+        const t = this.lookup(el.getAttribute('placeholder'))
+        if (t) el.setAttribute('placeholder', t)
+      })
+    }
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => {
         const p = n.parentNode
@@ -112,3 +119,5 @@ const I18N = {
     return null
   },
 }
+// 전역 노출(다른 정적 스크립트 및 테스트에서 참조)
+if (typeof globalThis !== 'undefined') globalThis.I18N = I18N
