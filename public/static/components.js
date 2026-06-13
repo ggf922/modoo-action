@@ -152,18 +152,18 @@ function renderProductCard(p) {
                 : '<span class="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">진행중</span>'}
     </div>
     <div class="p-4">
-      <span class="text-xs text-gray-400">${p.category}</span>
-      <h3 class="font-bold text-base mt-0.5 mb-2 line-clamp-1">${p.title}</h3>
+      <span class="text-sm text-gray-400">${p.category}</span>
+      <h3 class="font-bold text-lg mt-0.5 mb-2 line-clamp-1">${p.title}</h3>
       <div class="flex items-baseline gap-2">
-        <span class="text-gray-400 text-sm line-through-soft">${won(p.marketPrice)}원</span>
+        <span class="text-gray-400 text-base line-through-soft">${won(p.marketPrice)}원</span>
       </div>
-      <div class="flex items-baseline gap-1 mt-0.5">
-        <span class="text-xs text-gray-500">시작가</span>
-        <span class="text-brand-orange font-extrabold text-xl">${won(p.startPrice)}원</span>
+      <div class="flex items-baseline gap-1 mt-1">
+        <span class="text-sm text-gray-500">시작가</span>
+        <span class="text-brand-orange font-extrabold text-3xl leading-tight">${won(p.startPrice)}원</span>
       </div>
       ${renderMiniGauge(p.participants || 0, p.maxParticipants)}
-      <div class="mt-3 flex items-center justify-end">
-        <span class="text-sm font-bold text-white bg-brand-orange px-4 py-2 rounded-lg group-hover:bg-orange-600 transition">참여하기</span>
+      <div class="mt-4 flex items-center justify-center">
+        <span class="text-base font-bold text-white bg-brand-orange px-10 py-3 rounded-xl group-hover:bg-orange-600 transition">참여하기</span>
       </div>
     </div>
   </a>`
