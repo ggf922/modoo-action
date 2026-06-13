@@ -27,15 +27,20 @@
 > 생성되는 관리자 계정: **아이디 `admin` / 비밀번호 `admin123`**
 > ⚠️ 운영 시작 전 반드시 비밀번호를 변경하세요 (아래 5번 참고)
 
-### 1-3. 연결 문자열(DATABASE_URL) 확보 — ⭐가장 중요
-1. 좌측 하단 **Project Settings** → **Database**
-2. **Connection string** 섹션에서 **Connection pooling** 탭 선택
-3. **Transaction** 모드(포트 **6543**)의 URI를 복사 (서버리스용 — 필수!)
-   - 형식: `postgresql://postgres.xxxxxxxx:[PASSWORD]@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres`
-4. `[PASSWORD]` 부분을 1-1에서 저장한 DB 비밀번호로 교체
+### 1-3. 연결 문자열(DATABASE_URL) 확보 — ⭐가장 중요 (IPv4 필수)
+1. 상단 초록색 **Connect** 버튼 → **Connection String** 탭
+2. ⚠️ **반드시 `SHARED POOLER`(Session Pooler)** 의 주소를 복사하세요.
+   - 호스트 형식: `aws-1-ap-northeast-2.pooler.supabase.com` (리전에 따라 `aws-0`/`aws-1` 등)
+   - 사용자: `postgres.<project-ref>` (예: `postgres.dmdetopxciqstzlznwwc`)
+   - 전체 형식: `postgresql://postgres.<ref>:[PASSWORD]@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres`
+3. `[PASSWORD]` 부분을 1-1에서 저장한 DB 비밀번호로 교체
 
-> **반드시 포트 6543(Transaction Pooler)** 을 사용하세요.
-> 5432(Direct) 는 서버리스(Vercel Functions)에서 연결이 고갈됩니다.
+> 🚨 **DEDICATED POOLER(`db.<ref>.supabase.co`)는 절대 사용 금지!**
+> 이 호스트는 **IPv6 전용**이며, Vercel 서버리스 함수는 IPv6 아웃바운드를 지원하지 않아
+> `getaddrinfo ENOTFOUND` 에러로 모든 DB 쿼리가 500 실패합니다.
+> **반드시 `...pooler.supabase.com`(Shared/Session Pooler, IPv4 프록시)** 주소를 쓰세요.
+>
+> 본 앱은 `prepare: false` 로 설정되어 있어 Session(5432)·Transaction(6543) 풀러 모두 호환됩니다.
 
 ---
 
