@@ -811,6 +811,24 @@ async function pageAdminConfig() {
     </tr>`
 
   document.getElementById('app').innerHTML = adminLayout('/admin/config', `
+    <h2 class="font-bold text-lg mb-4">관리자 비밀번호 변경</h2>
+    <form id="pw-form" class="bg-white rounded-2xl border border-gray-100 p-5 space-y-3 max-w-lg mb-8">
+      <p class="text-xs text-gray-400 -mt-1 mb-1"><i class="fas fa-shield-halved"></i> 보안을 위해 기본 비밀번호(admin123)는 반드시 변경하세요.</p>
+      <div>
+        <label class="block text-sm font-medium mb-1">현재 비밀번호</label>
+        <input name="currentPassword" type="password" autocomplete="current-password" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">새 비밀번호 <span class="text-gray-400 font-normal">(6자 이상)</span></label>
+        <input name="newPassword" type="password" autocomplete="new-password" minlength="6" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">새 비밀번호 확인</label>
+        <input name="newPasswordConfirm" type="password" autocomplete="new-password" minlength="6" required class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+      </div>
+      <button type="submit" class="w-full bg-brand-dark text-white font-bold py-3 rounded-xl hover:bg-gray-800"><i class="fas fa-key mr-1"></i> 비밀번호 변경</button>
+    </form>
+
     <h2 class="font-bold text-lg mb-4">사이트 전역 설정</h2>
     <form id="config-form" class="bg-white rounded-2xl border border-gray-100 p-5 space-y-3 max-w-lg">
       <p class="text-xs text-gray-400 -mt-1 mb-1"><i class="fas fa-circle-info"></i> 기본 당첨자수·미당첨보상은 <b>새 상품 등록 시 자동으로 채워지는 기본값</b>입니다.</p>
@@ -848,6 +866,33 @@ async function pageAdminConfig() {
     const payload = Object.fromEntries(new FormData(e.target).entries())
     try { await api.put('/admin/config', payload); toast('전역 설정이 저장되었습니다.', 'success') }
     catch (err) { toast(errMsg(err), 'error') }
+  })
+
+  // 관리자 비밀번호 변경
+  document.getElementById('pw-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const currentPassword = String(fd.get('currentPassword') || '')
+    const newPassword = String(fd.get('newPassword') || '')
+    const newPasswordConfirm = String(fd.get('newPasswordConfirm') || '')
+
+    if (newPassword.length < 6) { toast('새 비밀번호는 6자 이상이어야 합니다.', 'error'); return }
+    if (newPassword !== newPasswordConfirm) { toast('새 비밀번호 확인이 일치하지 않습니다.', 'error'); return }
+
+    const btn = e.target.querySelector('button[type="submit"]')
+    const orig = btn.innerHTML
+    btn.disabled = true
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 변경 중...'
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword })
+      toast('비밀번호가 변경되었습니다. ✅', 'success')
+      e.target.reset()
+    } catch (err) {
+      toast(errMsg(err), 'error')
+    } finally {
+      btn.disabled = false
+      btn.innerHTML = orig
+    }
   })
 }
 
