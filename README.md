@@ -85,7 +85,7 @@
 | `#/admin/charges` | 충전 요청 승인/거절(포인트 지급) | Admin |
 | `#/admin/shipments` | 당첨 상품 배송관리(주소 확인/발송 처리) | Admin |
 | `#/admin/withdrawals` | 출금 승인/거절 | Admin |
-| `#/admin/config` | 사이트 전역 설정 | Admin |
+| `#/admin/config` | 사이트 전역 설정 + **관리자 비밀번호 변경** | Admin |
 
 ## 🔌 주요 API 엔드포인트
 - `POST /api/auth/register | login | logout`, `GET /api/auth/me`
