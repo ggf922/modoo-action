@@ -54,7 +54,12 @@ function toast(msg, type = 'info') {
 const Router = {
   routes: [],
   add(pattern, handler) { this.routes.push({ pattern, handler }) },
-  navigate(path) { window.location.hash = path },
+  navigate(path) {
+    const target = '#' + path
+    // 목표 해시가 현재와 동일하면 hashchange가 발생하지 않으므로 직접 다시 렌더
+    if (window.location.hash === target) this.resolve()
+    else window.location.hash = path
+  },
   async resolve() {
     const hash = window.location.hash.slice(1) || '/'
     const [path] = hash.split('?')

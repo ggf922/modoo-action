@@ -9622,14 +9622,19 @@ admin.post("/charge-requests/:id/process", async (c) => {
     await c.env.DB.prepare("UPDATE charge_requests SET status='REJECTED', processedAt=datetime('now') WHERE id=?").bind(id).run();
     return c.json({ ok: true, status: "REJECTED" });
   }
-  await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(cr.amount, cr.userId),
-    c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-       VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
-    ).bind(genId("ph-"), cr.userId, cr.amount, `\uD3EC\uC778\uD2B8 \uCDA9\uC804 \uC2B9\uC778 (\uC785\uAE08\uC790: ${cr.depositor ?? "-"})`),
-    c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=?").bind(id)
-  ]);
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=? AND status='PENDING'").bind(id).requireRows(),
+      c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(cr.amount, cr.userId),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), cr.userId, cr.amount, `\uD3EC\uC778\uD2B8 \uCDA9\uC804 \uC2B9\uC778 (\uC785\uAE08\uC790: ${cr.depositor ?? "-"})`)
+    ]);
+  } catch (e) {
+    if (e instanceof BatchGuardError) return c.json({ error: "\uC774\uBBF8 \uCC98\uB9AC\uB41C \uC694\uCCAD\uC785\uB2C8\uB2E4." }, 400);
+    throw e;
+  }
   return c.json({ ok: true, status: "COMPLETED" });
 });
 admin.get("/shipments", async (c) => {

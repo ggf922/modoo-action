@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Bindings, Variables, ProductRow, UserRow } from '../types'
 import type { D1PreparedStatement } from '../lib/db'
+import { BatchGuardError } from '../lib/db'
 import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
@@ -490,15 +491,23 @@ admin.post('/charge-requests/:id/process', async (c) => {
     return c.json({ ok: true, status: 'REJECTED' })
   }
 
-  // 승인 → 경매 포인트 지급 + 내역 기록 + 요청 완료
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(cr.amount, cr.userId),
-    c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-       VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), cr.userId, cr.amount, `포인트 충전 승인 (입금자: ${cr.depositor ?? '-'})`),
-    c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=?").bind(id),
-  ])
+  // 승인 → 요청 상태를 원자적으로 PENDING→COMPLETED 전환(중복 승인/동시 클릭 방어) +
+  //        경매 포인트 지급 + 내역 기록.
+  //   상태 전환 UPDATE를 가드(requireRows)로 두어, 동시에 들어온 두 번째 요청은
+  //   0행이 되어 BatchGuardError로 전체 롤백 → 포인트가 두 번 적립되지 않음.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE charge_requests SET status='COMPLETED', processedAt=datetime('now') WHERE id=? AND status='PENDING'").bind(id).requireRows(),
+      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(cr.amount, cr.userId),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), cr.userId, cr.amount, `포인트 충전 승인 (입금자: ${cr.depositor ?? '-'})`),
+    ])
+  } catch (e) {
+    if (e instanceof BatchGuardError) return c.json({ error: '이미 처리된 요청입니다.' }, 400)
+    throw e
+  }
   return c.json({ ok: true, status: 'COMPLETED' })
 })
 

@@ -19,8 +19,8 @@ function renderHeader() {
           </a>
           <button onclick="doLogout()" class="px-2 sm:px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-xs sm:text-sm">로그아웃</button>
         ` : `
-          <a href="#/auth/login" class="px-3 py-2 rounded-lg hover:bg-gray-100 font-medium">로그인</a>
-          <a href="#/auth/register" class="px-4 py-2 rounded-lg bg-brand-orange text-white font-semibold hover:bg-orange-600 transition">회원가입</a>
+          <a href="#/auth/login" onclick="event.preventDefault(); Router.navigate('/auth/login')" class="px-3 py-2 rounded-lg hover:bg-gray-100 font-medium cursor-pointer">로그인</a>
+          <a href="#/auth/register" onclick="event.preventDefault(); Router.navigate('/auth/register')" class="px-4 py-2 rounded-lg bg-brand-orange text-white font-semibold hover:bg-orange-600 transition cursor-pointer">회원가입</a>
         `}
       </div>
     </nav>

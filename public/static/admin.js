@@ -721,10 +721,14 @@ async function pageAdminCharges() {
       </div>`).join('') : '<p class="text-center text-gray-400 py-10">충전 요청이 없습니다.</p>'}
     </div>`)
 }
+const _chargeProcessing = new Set()
 async function processCharge(id, action) {
+  if (_chargeProcessing.has(id)) return // 중복 클릭(동시 요청) 방지
   if (!confirm(action==='approve' ? '충전을 승인하시겠습니까? 회원에게 포인트가 지급됩니다.' : '충전 요청을 거절하시겠습니까?')) return
+  _chargeProcessing.add(id)
   try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges() }
   catch (err) { toast(errMsg(err), 'error') }
+  finally { _chargeProcessing.delete(id) }
 }
 
 // 배송 관리 (당첨 상품 배송)
