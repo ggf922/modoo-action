@@ -11,6 +11,7 @@ function renderHeader() {
         모두모두 <span>🎁</span>
       </a>
       <div class="flex items-center gap-1 sm:gap-2 text-sm">
+        ${renderLangSelector()}
         ${u ? `
           ${isAdmin ? `<a href="#/admin" class="hidden sm:inline-flex items-center gap-1 px-3 py-2 rounded-lg text-brand-dark hover:bg-gray-100 font-medium"><i class="fas fa-shield-halved"></i> 관리자</a>` : ''}
           <a href="#/mypage" class="inline-flex items-center gap-1 px-2 sm:px-3 py-2 rounded-lg hover:bg-gray-100 font-medium">
@@ -26,6 +27,43 @@ function renderHeader() {
     </nav>
     ${isAdmin ? `<div class="sm:hidden border-t border-gray-100 px-4 py-2 bg-orange-50"><a href="#/admin" class="text-brand-orange font-medium text-sm"><i class="fas fa-shield-halved"></i> 관리자 페이지</a></div>` : ''}
   </header>`
+}
+
+// 언어 선택 드롭다운
+function renderLangSelector() {
+  const cur = (typeof I18N !== 'undefined' ? I18N.langs.find(l => l.code === I18N.lang) : null) || { flag: '🇰🇷', code: 'ko' }
+  const items = (typeof I18N !== 'undefined' ? I18N.langs : []).map(l => `
+    <button onclick="event.stopPropagation(); selectLang('${l.code}')"
+      class="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 ${l.code === cur.code ? 'font-bold text-brand-orange' : 'text-gray-700'}">
+      <span>${l.flag}</span> <span>${l.label}</span>
+    </button>`).join('')
+  return `
+  <div class="relative" id="lang-wrap">
+    <button onclick="event.stopPropagation(); toggleLangMenu()" aria-label="Language"
+      class="inline-flex items-center gap-1 px-2 py-2 rounded-lg hover:bg-gray-100 text-gray-600">
+      <i class="fas fa-globe"></i><span class="hidden sm:inline text-xs">${cur.flag}</span>
+      <i class="fas fa-chevron-down text-[10px] opacity-60"></i>
+    </button>
+    <div id="lang-menu" class="hidden absolute end-0 mt-1 w-36 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 max-h-72 overflow-y-auto">
+      ${items}
+    </div>
+  </div>`
+}
+function toggleLangMenu() {
+  const m = document.getElementById('lang-menu')
+  if (!m) return
+  m.classList.toggle('hidden')
+  if (!m.classList.contains('hidden')) {
+    setTimeout(() => document.addEventListener('click', _closeLangMenuOnce, { once: true }), 0)
+  }
+}
+function _closeLangMenuOnce() {
+  const m = document.getElementById('lang-menu')
+  if (m) m.classList.add('hidden')
+}
+function selectLang(code) {
+  _closeLangMenuOnce()
+  if (typeof I18N !== 'undefined') I18N.setLang(code)
 }
 
 function renderFooter() {

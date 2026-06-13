@@ -63,12 +63,15 @@ export function renderApp(): string {
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
   <script src="/static/api.js"></script>
+  <script src="/static/i18n.js"></script>
+  <script src="/static/i18n-dict.js"></script>
   <script src="/static/components.js"></script>
   <script src="/static/pages.js"></script>
   <script src="/static/mypage.js"></script>
   <script src="/static/network.js"></script>
   <script src="/static/admin.js"></script>
   <script src="/static/app.js"></script>
+  <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`
 }
