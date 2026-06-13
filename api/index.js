@@ -9724,6 +9724,27 @@ function renderApp() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>\uBAA8\uB450\uBAA8\uB450 \u{1F381} \uACBD\uB9E4\uBAB0 \u2014 \uC804\uC6D0 \uC218\uC775\uD615 \uACBD\uB9E4</title>
   <meta name="description" content="\uB099\uCC30\uC790\uB294 \uC800\uB834\uD558\uAC8C, \uBBF8\uB099\uCC30\uC790\uB294 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8! \uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uC138\uACC4 \uCD5C\uCD08 \uC804\uC6D0 \uC218\uC775\uD615 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0" />
+
+  <!-- ===== \uB9C1\uD06C \uACF5\uC720 \uBBF8\uB9AC\uBCF4\uAE30 (Open Graph / \uCE74\uCE74\uC624\uD1A1\xB7\uD398\uC774\uC2A4\uBD81 \uB4F1) ===== -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="\uBAA8\uB450\uBAA8\uB450 \uACBD\uB9E4\uBAB0" />
+  <meta property="og:title" content="\uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0, \uBAA8\uB450\uBAA8\uB450 \u{1F381}" />
+  <meta property="og:description" content="\uB099\uCC30\uB418\uBA74 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD6E8\uC52C \uC800\uB834\uD558\uAC8C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
+  <meta property="og:image" content="https://modoo.auction/static/og-image.jpg" />
+  <meta property="og:image:secure_url" content="https://modoo.auction/static/og-image.jpg" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="\uBAA8\uB450\uBAA8\uB450 \uACBD\uB9E4\uBAB0 \u2014 \uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0" />
+  <meta property="og:url" content="https://modoo.auction/" />
+  <meta property="og:locale" content="ko_KR" />
+
+  <!-- ===== \uD2B8\uC704\uD130(X) \uCE74\uB4DC ===== -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="\uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0, \uBAA8\uB450\uBAA8\uB450 \u{1F381}" />
+  <meta name="twitter:description" content="\uB099\uCC30\uB418\uBA74 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD6E8\uC52C \uC800\uB834\uD558\uAC8C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
+  <meta name="twitter:image" content="https://modoo.auction/static/og-image.jpg" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />

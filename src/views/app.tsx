@@ -6,6 +6,27 @@ export function renderApp(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>모두모두 🎁 경매몰 — 전원 수익형 경매</title>
   <meta name="description" content="낙찰자는 저렴하게, 미낙찰자는 보상 포인트! 모두가 이익을 보는 세계 최초 전원 수익형 공동 구매 경매 쇼핑몰" />
+
+  <!-- ===== 링크 공유 미리보기 (Open Graph / 카카오톡·페이스북 등) ===== -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="모두모두 경매몰" />
+  <meta property="og:title" content="모두가 이익을 보는 공동 구매 경매 쇼핑몰, 모두모두 🎁" />
+  <meta property="og:description" content="낙찰되면 시중가보다 훨씬 저렴하게 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
+  <meta property="og:image" content="https://modoo.auction/static/og-image.jpg" />
+  <meta property="og:image:secure_url" content="https://modoo.auction/static/og-image.jpg" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="모두모두 경매몰 — 모두가 이익을 보는 공동 구매 경매 쇼핑몰" />
+  <meta property="og:url" content="https://modoo.auction/" />
+  <meta property="og:locale" content="ko_KR" />
+
+  <!-- ===== 트위터(X) 카드 ===== -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="모두가 이익을 보는 공동 구매 경매 쇼핑몰, 모두모두 🎁" />
+  <meta name="twitter:description" content="낙찰되면 시중가보다 훨씬 저렴하게 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
+  <meta name="twitter:image" content="https://modoo.auction/static/og-image.jpg" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
