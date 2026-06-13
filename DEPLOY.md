@@ -23,6 +23,9 @@
 1. 좌측 메뉴 → **SQL Editor** → **New query**
 2. 저장소의 `supabase/schema.sql` 내용을 **그대로 복사**해 붙여넣고 **Run**
 3. 8개 테이블 + 관리자 계정 + 사이트 설정이 생성됩니다 (멱등 — 여러 번 실행해도 안전)
+4. **이어서 `supabase/0008_scale_indexes.sql` 도 복사해 붙여넣고 Run** (대규모 트래픽 대비
+   복합 인덱스 + `products.participantCount` 비정규화 컬럼 추가, 멱등). 이미 운영 중인 DB에도
+   안전하게 적용되며 기존 참여수를 자동 백필합니다.
 
 > 생성되는 관리자 계정: **아이디 `admin` / 비밀번호 `admin123`**
 > ⚠️ 운영 시작 전 반드시 비밀번호를 변경하세요 (아래 5번 참고)
@@ -41,6 +44,12 @@
 > **반드시 `...pooler.supabase.com`(Shared/Session Pooler, IPv4 프록시)** 주소를 쓰세요.
 >
 > 본 앱은 `prepare: false` 로 설정되어 있어 Session(5432)·Transaction(6543) 풀러 모두 호환됩니다.
+>
+> 💡 **대규모 동시접속(수천~1만) 대비: Transaction Pooler(포트 `6543`) 권장.**
+> Connect 화면에서 **Transaction Pooler** 주소(`...pooler.supabase.com:6543`)를 쓰면
+> 짧은 트랜잭션 단위로 연결을 재활용해 동시 처리량이 Session(5432)보다 훨씬 큽니다.
+> 형식: `postgresql://postgres.<ref>:[PASSWORD]@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres`
+> (앱이 `:6543` 을 자동 감지해 풀 설정을 최적화합니다.)
 
 ---
 
@@ -119,3 +128,28 @@ npx vercel dev        # http://localhost:3000
 - **SQL 자동 변환**: `?`→`$1,$2`, `datetime('now')`→`now()`, `LIKE`→`ILIKE`, camelCase 컬럼→`"큰따옴표"`
 - **진입점**: `api/index.ts` (`app.fetch(req, env)` 로 DB/JWT 주입), `vercel.json` 으로 라우팅
 - **정적 파일**: `public/static/*` → Vercel이 `/static/*` 로 자동 서빙
+
+---
+
+## 7. 📈 대규모 트래픽 운영 가이드 (목표: 동시접속 1만 / 누적 50만)
+
+### 적용된 확장성 최적화 (이번 릴리스)
+- **`products.participantCount` 비정규화 컬럼**: 목록 조회 시 `bids` COUNT 서브쿼리 제거 → 단일 인덱스 스캔.
+- **복합 인덱스**(`supabase/0008_scale_indexes.sql`): `products(status,sortOrder,createdAt)`, `bids(productId,createdAt)`, `point_history(userId,createdAt)` 등.
+- **인메모리 TTL 캐시**(`src/lib/cache.ts`): 공개 상품목록 3초, 공개 설정 30초 캐싱 → DB 직격 대폭 감소. 쓰기 시 자동 무효화.
+- **BIGINT number 파싱**: postgres.js 가 BIGINT 를 number 로 반환하도록 설정(포인트 비교 버그 방지).
+- **동시성 정원 가드**: 입찰 시 `participantCount < maxParticipants` 조건부 UPDATE + 트랜잭션 롤백(`requireRows`) → 정원 초과/중복 차감 원천 차단.
+
+### 운영 권장 설정
+1. **DATABASE_URL 은 Transaction Pooler(`:6543`)** 사용 (1-3 참고).
+2. **Supabase Pro Compute** 단계 상향: 동접이 수천을 넘으면 Supabase 대시보드 → Settings → Compute & Disk 에서 인스턴스 크기를 올려 `max_connections` 와 풀러 용량을 확보.
+3. **Vercel Function 리전**을 Supabase 리전(ap-northeast-2, 서울)과 동일하게 설정 → DB 왕복 지연 최소화.
+
+### 예상 수용량 (단계별)
+| 단계 | 동시접속 | 누적회원 | 필요 조치 |
+|------|---------|---------|-----------|
+| 현재 릴리스 | ~500 | ~30만 | 0008 마이그레이션 적용 + Transaction Pooler |
+| +Compute 상향 | ~2,000 | ~50만 | Supabase Compute Small→Large |
+| +읽기 캐시 강화 | ~10,000 | 100만+ | 캐시 TTL 조정/엣지 캐시, 경매 마감 분산 |
+
+> 누적 회원 50만은 저장 용량상 전혀 문제 없습니다(약 250MB). 핵심은 **경매 마감 순간의 동시 입찰 처리**이며, 위 정원 가드 + 비정규화로 정합성이 보장됩니다.

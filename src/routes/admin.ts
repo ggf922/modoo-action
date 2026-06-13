@@ -4,6 +4,7 @@ import type { D1PreparedStatement } from '../lib/db'
 import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
+import { invalidate } from '../lib/cache'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -84,6 +85,7 @@ admin.post('/products', async (c) => {
     Number(b.maxParticipants ?? 10), Number(b.winnersCount ?? 1), Number(b.losingReward ?? 200),
     maxOrder + 1
   ).run()
+  invalidate('products')
   return c.json({ ok: true, id })
 })
 
@@ -111,6 +113,7 @@ admin.put('/products/:id', async (c) => {
     Number(b.maxParticipants), Number(b.winnersCount), Number(b.losingReward),
     b.status ?? 'OPEN', id
   ).run()
+  invalidate('products')
   return c.json({ ok: true })
 })
 
@@ -121,6 +124,7 @@ admin.delete('/products/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM bids WHERE productId = ?').bind(id),
     c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id),
   ])
+  invalidate('products')
   return c.json({ ok: true })
 })
 
@@ -159,6 +163,7 @@ admin.post('/products/:id/move', async (c) => {
   if (curOrder === neighborOrder) {
     if (dir === 'up') { curOrder = neighborOrder - 1 } else { curOrder = neighborOrder + 1 }
     await c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(curOrder, cur.id).run()
+    invalidate('products')
     return c.json({ ok: true, moved: true })
   }
 
@@ -166,6 +171,7 @@ admin.post('/products/:id/move', async (c) => {
     c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(neighborOrder, cur.id),
     c.env.DB.prepare('UPDATE products SET sortOrder = ? WHERE id = ?').bind(curOrder, neighbor.id),
   ])
+  invalidate('products')
   return c.json({ ok: true, moved: true })
 })
 
@@ -175,6 +181,7 @@ admin.post('/products/:id/draw', async (c) => {
   if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
   if (product.status !== 'OPEN') return c.json({ error: '이미 마감된 경매입니다.' }, 400)
   const result = await drawWinners(c.env.DB, product)
+  invalidate('products')
   return c.json({ ok: true, ...result })
 })
 
@@ -205,6 +212,7 @@ admin.patch('/products/:id/settings', async (c) => {
   await c.env.DB.prepare(
     'UPDATE products SET winnersCount = ?, losingReward = ?, maxParticipants = ? WHERE id = ?'
   ).bind(winnersCount, losingReward, maxParticipants, id).run()
+  invalidate('products')
 
   return c.json({ ok: true, winnersCount, losingReward, maxParticipants })
 })
@@ -419,6 +427,11 @@ admin.delete('/members/:id', async (c) => {
   // 하위 회원(직속)을 삭제 대상의 추천인에게 승계 (조직도 단절 방지)
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE users SET referrerId = ? WHERE referrerId = ?').bind(user.referrerId ?? null, id),
+    // 삭제 회원이 참여한 상품의 participantCount 를 -1 (정합성 유지). bids 삭제보다 먼저 실행.
+    c.env.DB.prepare(
+      `UPDATE products SET participantCount = participantCount - 1
+       WHERE id IN (SELECT productId FROM bids WHERE userId = ?) AND participantCount > 0`
+    ).bind(id),
     c.env.DB.prepare('DELETE FROM winners WHERE userId = ?').bind(id),
     c.env.DB.prepare('DELETE FROM bids WHERE userId = ?').bind(id),
     c.env.DB.prepare('DELETE FROM withdrawals WHERE userId = ?').bind(id),
@@ -582,6 +595,7 @@ admin.put('/config', async (c) => {
     Number(b.defaultWinners), Number(b.defaultLosingReward),
     Number(b.minWithdrawAmount), Number(b.referralBonus)
   ).run()
+  invalidate('config:public')
   return c.json({ ok: true })
 })
 

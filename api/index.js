@@ -3612,25 +3612,25 @@ var unusableForAlg = "given KeyObject instance cannot be used for this algorithm
 var cache;
 var handleJWK = async (key, jwk, alg, freeze = false) => {
   cache ||= /* @__PURE__ */ new WeakMap();
-  let cached = cache.get(key);
-  if (cached?.[alg]) {
-    return cached[alg];
+  let cached2 = cache.get(key);
+  if (cached2?.[alg]) {
+    return cached2[alg];
   }
   const cryptoKey = await jwkToKey({ ...jwk, alg });
   if (freeze)
     Object.freeze(key);
-  if (!cached) {
+  if (!cached2) {
     cache.set(key, { [alg]: cryptoKey });
   } else {
-    cached[alg] = cryptoKey;
+    cached2[alg] = cryptoKey;
   }
   return cryptoKey;
 };
 var handleKeyObject = (keyObject, alg) => {
   cache ||= /* @__PURE__ */ new WeakMap();
-  let cached = cache.get(keyObject);
-  if (cached?.[alg]) {
-    return cached[alg];
+  let cached2 = cache.get(keyObject);
+  if (cached2?.[alg]) {
+    return cached2[alg];
   }
   const isPublic = keyObject.type === "public";
   const extractable = isPublic ? true : false;
@@ -3729,10 +3729,10 @@ var handleKeyObject = (keyObject, alg) => {
   if (!cryptoKey) {
     throw new TypeError(unusableForAlg);
   }
-  if (!cached) {
+  if (!cached2) {
     cache.set(keyObject, { [alg]: cryptoKey });
   } else {
-    cached[alg] = cryptoKey;
+    cached2[alg] = cryptoKey;
   }
   return cryptoKey;
 };
@@ -8321,6 +8321,14 @@ function osUsername() {
 }
 
 // src/lib/db.ts
+var BatchGuardError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "BatchGuardError";
+  }
+  code;
+};
 var QUOTED_COLUMNS = [
   // users
   "auctionPoint",
@@ -8342,6 +8350,7 @@ var QUOTED_COLUMNS = [
   "winnersCount",
   "losingReward",
   "sortOrder",
+  "participantCount",
   "startAt",
   "endAt",
   // bids
@@ -8389,13 +8398,26 @@ function getSql(connectionString) {
   if (!connectionString) {
     throw new Error("DATABASE_URL \uD658\uACBD\uBCC0\uC218\uAC00 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. (Vercel \u2192 Settings \u2192 Environment Variables)");
   }
+  const isTransactionPooler = /:6543\//.test(connectionString);
   _sql = src_default(connectionString, {
     max: 1,
-    // 서버리스: 함수당 연결 1개 (Supabase Pooler가 풀링 담당)
-    idle_timeout: 20,
+    idle_timeout: isTransactionPooler ? 10 : 20,
     connect_timeout: 10,
-    prepare: false
-    // Transaction Pooler 호환 (prepared statement 비활성)
+    max_lifetime: 60 * 30,
+    // 30분
+    prepare: false,
+    // ⚠️ 중요: PostgreSQL BIGINT(int8, OID 20)는 postgres.js 기본값이 "문자열"이다.
+    //   포인트/가격 컬럼이 모두 BIGINT 라서, 문자열로 받으면 `auctionPoint < entryFee`
+    //   같은 비교가 사전순 문자열 비교가 되어 ("10000" < "500" === true) 치명적 버그가 난다.
+    //   포인트/가격 값은 JS 안전정수 범위(2^53) 내이므로 number 로 파싱한다.
+    types: {
+      bigint: {
+        to: 20,
+        from: [20],
+        serialize: (v) => v.toString(),
+        parse: (v) => Number(v)
+      }
+    }
   });
   return _sql;
 }
@@ -8407,6 +8429,14 @@ var PreparedStatement = class {
   sql;
   query;
   params = [];
+  // batch(트랜잭션) 내에서 이 statement 의 affected rows 가 0이면 트랜잭션 전체를 롤백한다.
+  // (예: 정원 조건부 UPDATE 가 0행 → 정원 초과로 입찰 실패 → bids INSERT 등 모두 취소)
+  _requireRows = false;
+  /** batch 내에서 영향받은 행이 0이면 트랜잭션을 롤백하도록 표시 */
+  requireRows() {
+    this._requireRows = true;
+    return this;
+  }
   bind(...params) {
     this.params = params.map((p) => p === void 0 ? null : p);
     return this;
@@ -8450,6 +8480,9 @@ var PgDatabase = class {
       for (const st of statements) {
         const { text, params } = st._compiled();
         const rows = await tx.unsafe(text, params);
+        if (st._requireRows && (rows.count ?? 0) === 0) {
+          throw new BatchGuardError("REQUIRE_ROWS_FAILED");
+        }
         out.push({ results: rows, success: true, meta: { changes: rows.count } });
       }
       return out;
@@ -8883,19 +8916,43 @@ async function drawWinners(DB, product) {
   };
 }
 
+// src/lib/cache.ts
+var store = /* @__PURE__ */ new Map();
+async function cached(key, ttlMs, loader) {
+  const now = Date.now();
+  const hit = store.get(key);
+  if (hit && hit.expires > now) {
+    return hit.value;
+  }
+  const value = await loader();
+  store.set(key, { value, expires: now + ttlMs });
+  return value;
+}
+function invalidate(keyOrPrefix) {
+  if (store.has(keyOrPrefix)) {
+    store.delete(keyOrPrefix);
+    return;
+  }
+  for (const k of store.keys()) {
+    if (k.startsWith(keyOrPrefix)) store.delete(k);
+  }
+}
+
 // src/routes/products.ts
 var products = new Hono2();
 products.get("/", async (c) => {
   const status = c.req.query("status");
-  let sql = `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.productId = p.id) AS participants
-             FROM products p`;
-  const binds = [];
-  if (status) {
-    sql += " WHERE p.status = ?";
-    binds.push(status);
-  }
-  sql += " ORDER BY p.sortOrder ASC, p.createdAt DESC";
-  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results;
+  const cacheKey2 = `products:${status || "ALL"}`;
+  const rows = await cached(cacheKey2, 3e3, async () => {
+    let sql = `SELECT p.*, p.participantCount AS participants FROM products p`;
+    const binds = [];
+    if (status) {
+      sql += " WHERE p.status = ?";
+      binds.push(status);
+    }
+    sql += " ORDER BY p.sortOrder ASC, p.createdAt DESC";
+    return (await c.env.DB.prepare(sql).bind(...binds).all()).results;
+  });
   return c.json({ products: rows });
 });
 products.get("/:id", async (c) => {
@@ -8930,23 +8987,35 @@ products.post("/:id/join", requireAuth, async (c) => {
   }
   const dup = await c.env.DB.prepare("SELECT id FROM bids WHERE userId = ? AND productId = ?").bind(user.id, id).first();
   if (dup) return c.json({ error: "\uC774\uBBF8 \uCC38\uC5EC\uD55C \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 409);
-  const countRow = await c.env.DB.prepare("SELECT COUNT(*) AS cnt FROM bids WHERE productId = ?").bind(id).first();
-  const currentCount = countRow?.cnt ?? 0;
-  if (currentCount >= product.maxParticipants) {
+  if (product.participantCount >= product.maxParticipants) {
     return c.json({ error: "\uC815\uC6D0\uC774 \uBAA8\uB450 \uCC3C\uC2B5\uB2C8\uB2E4." }, 400);
   }
-  await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ?").bind(product.entryFee, user.id),
-    c.env.DB.prepare(
-      `INSERT INTO bids (id, userId, productId, pointsUsed, isWinner, createdAt)
-       VALUES (?, ?, ?, ?, 0, datetime('now'))`
-    ).bind(genId("b-"), user.id, id, product.entryFee),
-    c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-       VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
-    ).bind(genId("ph-"), user.id, -product.entryFee, `\uACBD\uB9E4 \uCC38\uC5EC: ${product.title}`)
-  ]);
-  const newCount = currentCount + 1;
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE products SET participantCount = participantCount + 1 WHERE id = ? AND participantCount < maxParticipants"
+      ).bind(id).requireRows(),
+      c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ?").bind(product.entryFee, user.id),
+      c.env.DB.prepare(
+        `INSERT INTO bids (id, userId, productId, pointsUsed, isWinner, createdAt)
+         VALUES (?, ?, ?, ?, 0, datetime('now'))`
+      ).bind(genId("b-"), user.id, id, product.entryFee),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), user.id, -product.entryFee, `\uACBD\uB9E4 \uCC38\uC5EC: ${product.title}`)
+    ]);
+  } catch (e) {
+    if (e?.name === "BatchGuardError") {
+      return c.json({ error: "\uC815\uC6D0\uC774 \uBAA8\uB450 \uCC3C\uC2B5\uB2C8\uB2E4." }, 400);
+    }
+    if (String(e?.message || "").includes("bids_userId_productId") || e?.code === "23505") {
+      return c.json({ error: "\uC774\uBBF8 \uCC38\uC5EC\uD55C \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 409);
+    }
+    throw e;
+  }
+  const newCount = product.participantCount + 1;
+  invalidate("products");
   let drawResult = null;
   if (newCount >= product.maxParticipants) {
     drawResult = await drawWinners(c.env.DB, product);
@@ -9220,6 +9289,7 @@ admin.post("/products", async (c) => {
     Number(b2.losingReward ?? 200),
     maxOrder + 1
   ).run();
+  invalidate("products");
   return c.json({ ok: true, id });
 });
 admin.get("/products/:id", async (c) => {
@@ -9252,6 +9322,7 @@ admin.put("/products/:id", async (c) => {
     b2.status ?? "OPEN",
     id
   ).run();
+  invalidate("products");
   return c.json({ ok: true });
 });
 admin.delete("/products/:id", async (c) => {
@@ -9261,6 +9332,7 @@ admin.delete("/products/:id", async (c) => {
     c.env.DB.prepare("DELETE FROM bids WHERE productId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM products WHERE id = ?").bind(id)
   ]);
+  invalidate("products");
   return c.json({ ok: true });
 });
 admin.post("/products/:id/move", async (c) => {
@@ -9294,12 +9366,14 @@ admin.post("/products/:id/move", async (c) => {
       curOrder = neighborOrder + 1;
     }
     await c.env.DB.prepare("UPDATE products SET sortOrder = ? WHERE id = ?").bind(curOrder, cur.id).run();
+    invalidate("products");
     return c.json({ ok: true, moved: true });
   }
   await c.env.DB.batch([
     c.env.DB.prepare("UPDATE products SET sortOrder = ? WHERE id = ?").bind(neighborOrder, cur.id),
     c.env.DB.prepare("UPDATE products SET sortOrder = ? WHERE id = ?").bind(curOrder, neighbor.id)
   ]);
+  invalidate("products");
   return c.json({ ok: true, moved: true });
 });
 admin.post("/products/:id/draw", async (c) => {
@@ -9307,6 +9381,7 @@ admin.post("/products/:id/draw", async (c) => {
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   if (product.status !== "OPEN") return c.json({ error: "\uC774\uBBF8 \uB9C8\uAC10\uB41C \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 400);
   const result = await drawWinners(c.env.DB, product);
+  invalidate("products");
   return c.json({ ok: true, ...result });
 });
 admin.patch("/products/:id/settings", async (c) => {
@@ -9329,6 +9404,7 @@ admin.patch("/products/:id/settings", async (c) => {
   await c.env.DB.prepare(
     "UPDATE products SET winnersCount = ?, losingReward = ?, maxParticipants = ? WHERE id = ?"
   ).bind(winnersCount, losingReward, maxParticipants, id).run();
+  invalidate("products");
   return c.json({ ok: true, winnersCount, losingReward, maxParticipants });
 });
 admin.get("/members", async (c) => {
@@ -9498,6 +9574,11 @@ admin.delete("/members/:id", async (c) => {
   if (user.role === "ADMIN") return c.json({ error: "\uAD00\uB9AC\uC790 \uACC4\uC815\uC740 \uC0AD\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
   await c.env.DB.batch([
     c.env.DB.prepare("UPDATE users SET referrerId = ? WHERE referrerId = ?").bind(user.referrerId ?? null, id),
+    // 삭제 회원이 참여한 상품의 participantCount 를 -1 (정합성 유지). bids 삭제보다 먼저 실행.
+    c.env.DB.prepare(
+      `UPDATE products SET participantCount = participantCount - 1
+       WHERE id IN (SELECT productId FROM bids WHERE userId = ?) AND participantCount > 0`
+    ).bind(id),
     c.env.DB.prepare("DELETE FROM winners WHERE userId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM bids WHERE userId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM withdrawals WHERE userId = ?").bind(id),
@@ -9629,6 +9710,7 @@ admin.put("/config", async (c) => {
     Number(b2.minWithdrawAmount),
     Number(b2.referralBonus)
   ).run();
+  invalidate("config:public");
   return c.json({ ok: true });
 });
 var admin_default = admin;
@@ -9699,9 +9781,13 @@ api.route("/products", products_default);
 api.route("/me", me_default);
 api.route("/admin", admin_default);
 api.get("/config/public", async (c) => {
-  const config = await c.env.DB.prepare(
-    "SELECT defaultLosingReward, minWithdrawAmount, referralBonus FROM site_config LIMIT 1"
-  ).first();
+  const config = await cached(
+    "config:public",
+    3e4,
+    async () => c.env.DB.prepare(
+      "SELECT defaultLosingReward, minWithdrawAmount, referralBonus FROM site_config LIMIT 1"
+    ).first()
+  );
   return c.json({ config });
 });
 app.route("/api", api);

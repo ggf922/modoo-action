@@ -3,21 +3,28 @@ import type { Bindings, Variables, ProductRow, UserRow } from '../types'
 import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
+import { cached, invalidate } from '../lib/cache'
 
 const products = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // 상품 목록 (각 상품의 참여자 수 포함)
+// 성능:
+//  1) participantCount 비정규화 컬럼 사용 (bids COUNT 서브쿼리 제거)
+//  2) 사용자 무관 공개 데이터이므로 짧은 TTL(3초) 인메모리 캐싱 → DB 직격 감소
+//     입찰/추첨/상품변경 시 invalidate('products') 로 즉시 갱신.
 products.get('/', async (c) => {
   const status = c.req.query('status')
-  let sql = `SELECT p.*, (SELECT COUNT(*) FROM bids b WHERE b.productId = p.id) AS participants
-             FROM products p`
-  const binds: any[] = []
-  if (status) {
-    sql += ' WHERE p.status = ?'
-    binds.push(status)
-  }
-  sql += ' ORDER BY p.sortOrder ASC, p.createdAt DESC'
-  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
+  const cacheKey = `products:${status || 'ALL'}`
+  const rows = await cached(cacheKey, 3000, async () => {
+    let sql = `SELECT p.*, p.participantCount AS participants FROM products p`
+    const binds: any[] = []
+    if (status) {
+      sql += ' WHERE p.status = ?'
+      binds.push(status)
+    }
+    sql += ' ORDER BY p.sortOrder ASC, p.createdAt DESC'
+    return (await c.env.DB.prepare(sql).bind(...binds).all()).results
+  })
   return c.json({ products: rows })
 })
 
@@ -69,27 +76,46 @@ products.post('/:id/join', requireAuth, async (c) => {
   const dup = await c.env.DB.prepare('SELECT id FROM bids WHERE userId = ? AND productId = ?').bind(user.id, id).first()
   if (dup) return c.json({ error: '이미 참여한 경매입니다.' }, 409)
 
-  // 3. 정원 초과 차단
-  const countRow = await c.env.DB.prepare('SELECT COUNT(*) AS cnt FROM bids WHERE productId = ?').bind(id).first<{ cnt: number }>()
-  const currentCount = countRow?.cnt ?? 0
-  if (currentCount >= product.maxParticipants) {
+  // 3. 정원 초과 차단 (비정규화 컬럼으로 사전 확인 — 빠른 거부)
+  if (product.participantCount >= product.maxParticipants) {
     return c.json({ error: '정원이 모두 찼습니다.' }, 400)
   }
 
-  // 4. 포인트 차감 + Bid 생성 + 5. 내역 기록 (배치 트랜잭션)
-  await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ?').bind(product.entryFee, user.id),
-    c.env.DB.prepare(
-      `INSERT INTO bids (id, userId, productId, pointsUsed, isWinner, createdAt)
-       VALUES (?, ?, ?, ?, 0, datetime('now'))`
-    ).bind(genId('b-'), user.id, id, product.entryFee),
-    c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-       VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), user.id, -product.entryFee, `경매 참여: ${product.title}`),
-  ])
+  // 4. 정원 원자적 증가 + 포인트 차감 + Bid 생성 + 내역 기록 (단일 트랜잭션)
+  //    - 정원 UPDATE 를 조건부(< maxParticipants)로 +1 하고 .requireRows() 표시:
+  //      0행이면(동시 입찰로 정원이 막 찼으면) 트랜잭션 전체가 롤백되어 bids/포인트도 취소된다.
+  //      → 1만 동접 경매 마감 순간의 정원 초과/중복 차감을 DB 레벨에서 원자적으로 방지(낙관적 락).
+  //    - UNIQUE(userId, productId) 제약이 동시 중복참여를 최종 차단한다.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        'UPDATE products SET participantCount = participantCount + 1 WHERE id = ? AND participantCount < maxParticipants'
+      ).bind(id).requireRows(),
+      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ?').bind(product.entryFee, user.id),
+      c.env.DB.prepare(
+        `INSERT INTO bids (id, userId, productId, pointsUsed, isWinner, createdAt)
+         VALUES (?, ?, ?, ?, 0, datetime('now'))`
+      ).bind(genId('b-'), user.id, id, product.entryFee),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), user.id, -product.entryFee, `경매 참여: ${product.title}`),
+    ])
+  } catch (e: any) {
+    // 정원 가드 실패 → 정원 마감. 그 외 에러(예: UNIQUE 중복참여)도 안전하게 안내.
+    if (e?.name === 'BatchGuardError') {
+      return c.json({ error: '정원이 모두 찼습니다.' }, 400)
+    }
+    if (String(e?.message || '').includes('bids_userId_productId') || e?.code === '23505') {
+      return c.json({ error: '이미 참여한 경매입니다.' }, 409)
+    }
+    throw e
+  }
 
-  const newCount = currentCount + 1
+  const newCount = product.participantCount + 1
+
+  // 참여로 participantCount/상태가 바뀌었으므로 공개 목록 캐시 무효화
+  invalidate('products')
 
   // 6. 정원 도달 → 자동 추첨
   let drawResult = null

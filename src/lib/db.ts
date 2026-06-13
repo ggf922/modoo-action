@@ -9,6 +9,14 @@
 // ============================================================
 import postgres from 'postgres'
 
+/** batch 트랜잭션에서 requireRows 조건이 깨졌을 때 던지는 가드 에러(롤백 유도) */
+export class BatchGuardError extends Error {
+  constructor(public code: string) {
+    super(code)
+    this.name = 'BatchGuardError'
+  }
+}
+
 // SQLite 식별자(따옴표 없는 camelCase 컬럼)를 PostgreSQL용 "큰따옴표" 식별자로 변환하기 위한
 // 실제 DB 컬럼명 목록. PostgreSQL은 따옴표가 없으면 대문자를 소문자로 접기 때문에 필요하다.
 const QUOTED_COLUMNS = [
@@ -17,7 +25,7 @@ const QUOTED_COLUMNS = [
   'bankName', 'bankAccount', 'accountHolder', 'createdAt', 'updatedAt',
   // products
   'imageUrl', 'marketPrice', 'startPrice', 'entryFee', 'maxParticipants',
-  'winnersCount', 'losingReward', 'sortOrder', 'startAt', 'endAt',
+  'winnersCount', 'losingReward', 'sortOrder', 'participantCount', 'startAt', 'endAt',
   // bids
   'userId', 'productId', 'pointsUsed', 'isWinner',
   // winners
@@ -80,11 +88,36 @@ function getSql(connectionString: string) {
     // 실제 쿼리가 필요한 시점에 URL 이 없으면 의미 있는 에러를 던진다.
     throw new Error('DATABASE_URL 환경변수가 설정되지 않았습니다. (Vercel → Settings → Environment Variables)')
   }
+  // 대규모 동시접속(목표 1만) 대비 서버리스 풀 설정.
+  //  - max:1        : Vercel 함수 인스턴스당 연결 1개. 실제 풀링은 Supabase Pooler가 담당.
+  //                   (함수가 동시 N개 뜨면 Pooler 연결도 N개 — 그래서 Transaction Pooler 6543 필수)
+  //  - prepare:false: Transaction Pooler(6543) 및 Session Pooler(5432) 모두 호환.
+  //  - idle_timeout : 서버리스에서 좀비 연결 방지(짧게).
+  //  - connect_timeout: 풀러 혼잡 시 빠른 실패 → 재시도/에러 전파.
+  //  - max_lifetime : 장수명 연결 누수 방지.
+  //
+  // ⚠️ 운영(1만 동접) 권장 DATABASE_URL: Transaction Pooler(포트 6543)
+  //    예) postgresql://postgres.<ref>:<pw>@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres
+  //    Transaction Pooler 는 짧은 트랜잭션 단위로 연결을 재활용 → 동시 처리량이 Session(5432)보다 훨씬 큼.
+  const isTransactionPooler = /:6543\//.test(connectionString)
   _sql = postgres(connectionString, {
-    max: 1,                 // 서버리스: 함수당 연결 1개 (Supabase Pooler가 풀링 담당)
-    idle_timeout: 20,
+    max: 1,
+    idle_timeout: isTransactionPooler ? 10 : 20,
     connect_timeout: 10,
-    prepare: false,         // Transaction Pooler 호환 (prepared statement 비활성)
+    max_lifetime: 60 * 30,  // 30분
+    prepare: false,
+    // ⚠️ 중요: PostgreSQL BIGINT(int8, OID 20)는 postgres.js 기본값이 "문자열"이다.
+    //   포인트/가격 컬럼이 모두 BIGINT 라서, 문자열로 받으면 `auctionPoint < entryFee`
+    //   같은 비교가 사전순 문자열 비교가 되어 ("10000" < "500" === true) 치명적 버그가 난다.
+    //   포인트/가격 값은 JS 안전정수 범위(2^53) 내이므로 number 로 파싱한다.
+    types: {
+      bigint: {
+        to: 20,
+        from: [20],
+        serialize: (v: number | bigint) => v.toString(),
+        parse: (v: string) => Number(v),
+      },
+    },
   })
   return _sql
 }
@@ -92,10 +125,19 @@ function getSql(connectionString: string) {
 /** D1PreparedStatement 호환 객체 */
 export class PreparedStatement {
   private params: any[] = []
+  // batch(트랜잭션) 내에서 이 statement 의 affected rows 가 0이면 트랜잭션 전체를 롤백한다.
+  // (예: 정원 조건부 UPDATE 가 0행 → 정원 초과로 입찰 실패 → bids INSERT 등 모두 취소)
+  _requireRows = false
   constructor(
     private sql: ReturnType<typeof postgres>,
     private query: string
   ) {}
+
+  /** batch 내에서 영향받은 행이 0이면 트랜잭션을 롤백하도록 표시 */
+  requireRows(): PreparedStatement {
+    this._requireRows = true
+    return this
+  }
 
   bind(...params: any[]): PreparedStatement {
     this.params = params.map((p) => (p === undefined ? null : p))
@@ -146,6 +188,10 @@ export class PgDatabase {
       for (const st of statements) {
         const { text, params } = st._compiled()
         const rows = await tx.unsafe(text, params)
+        // requireRows 표시된 statement 가 0행이면 트랜잭션 롤백(전체 취소)
+        if (st._requireRows && (rows.count ?? 0) === 0) {
+          throw new BatchGuardError('REQUIRE_ROWS_FAILED')
+        }
         out.push({ results: rows as unknown as T[], success: true, meta: { changes: rows.count } })
       }
       return out

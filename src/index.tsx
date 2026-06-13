@@ -7,6 +7,7 @@ import productRoutes from './routes/products'
 import meRoutes from './routes/me'
 import adminRoutes from './routes/admin'
 import { renderApp } from './views/app'
+import { cached } from './lib/cache'
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -23,10 +24,14 @@ api.route('/me', meRoutes)
 api.route('/admin', adminRoutes)
 
 // 공개 설정 (회원가입 추천 보너스 표시 등)
+// 거의 변하지 않는 전역 설정 — 30초 TTL 캐싱으로 DB 부하 절감.
+// 관리자 설정 변경 시 admin 라우트에서 invalidate('config:public') 로 즉시 갱신.
 api.get('/config/public', async (c) => {
-  const config = await c.env.DB.prepare(
-    'SELECT defaultLosingReward, minWithdrawAmount, referralBonus FROM site_config LIMIT 1'
-  ).first()
+  const config = await cached('config:public', 30000, async () =>
+    c.env.DB.prepare(
+      'SELECT defaultLosingReward, minWithdrawAmount, referralBonus FROM site_config LIMIT 1'
+    ).first()
+  )
   return c.json({ config })
 })
 
