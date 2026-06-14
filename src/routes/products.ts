@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables, ProductRow, UserRow } from '../types'
 import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
-import { drawWinners } from '../lib/draw'
+import { drawWinners, ensureBidRound } from '../lib/draw'
 import { cached, invalidate } from '../lib/cache'
 
 const products = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -52,30 +52,31 @@ products.get('/', async (c) => {
 products.get('/:id', async (c) => {
   const id = c.req.param('id')
   await ensureProductUrlColumn(c.env.DB)
+  await ensureBidRound(c.env.DB)
   const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>()
   if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
 
-  // 참여자(닉네임만 노출)
+  // 참여자(닉네임만 노출) — 현재 진행 회차(round=0, 미정산)만 노출
   const participants = (await c.env.DB.prepare(
     `SELECT b.userId, b.isWinner, b.createdAt, u.nickname
      FROM bids b JOIN users u ON u.id = b.userId
-     WHERE b.productId = ? ORDER BY b.createdAt ASC`
+     WHERE b.productId = ? AND b.round = 0 ORDER BY b.createdAt ASC`
   ).bind(id).all()).results
 
-  // 당첨자
+  // 당첨자 (누적 — 지난 회차 포함 최근순)
   const winners = (await c.env.DB.prepare(
-    `SELECT w.userId, w.finalPrice, u.nickname FROM winners w JOIN users u ON u.id = w.userId WHERE w.productId = ?`
+    `SELECT w.userId, w.finalPrice, u.nickname FROM winners w JOIN users u ON u.id = w.userId WHERE w.productId = ? ORDER BY w.drawnAt DESC`
   ).bind(id).all()).results
 
   const user = c.get('user')
   let myBid = null
   let myBidCount = 0
   if (user) {
-    // 반복 참여 허용: 내 참여 건수 집계 (가장 최근 1건은 myBid 로 하위호환 제공)
-    const cntRow = await c.env.DB.prepare('SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ?').bind(user.id, id).first<{ c: number }>()
+    // 반복 참여 허용: 현재 회차(round=0) 내 참여 건수만 집계 (이전 회차 정산분 제외)
+    const cntRow = await c.env.DB.prepare('SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ? AND round = 0').bind(user.id, id).first<{ c: number }>()
     myBidCount = cntRow?.c ?? 0
     if (myBidCount > 0) {
-      myBid = await c.env.DB.prepare('SELECT * FROM bids WHERE userId = ? AND productId = ? ORDER BY createdAt DESC').bind(user.id, id).first()
+      myBid = await c.env.DB.prepare('SELECT * FROM bids WHERE userId = ? AND productId = ? AND round = 0 ORDER BY createdAt DESC').bind(user.id, id).first()
     }
   }
 
@@ -101,7 +102,9 @@ products.post('/:id/join', requireAuth, async (c) => {
 
   // 2. 반복 참여 허용: 같은 경매에 경매포인트가 있는 한 여러 번 참여 가능
   //    (UNIQUE(userId, productId) 제약은 ensureRepeatBids 로 제거됨)
+  //    + 회차(round) 컬럼 보장 — 추첨 후 자동 재오픈 순환을 위해 필요
   await ensureRepeatBids(c.env.DB)
+  await ensureBidRound(c.env.DB)
 
   // 3. 정원 초과 차단 (비정규화 컬럼으로 사전 확인 — 빠른 거부)
   if (product.participantCount >= product.maxParticipants) {

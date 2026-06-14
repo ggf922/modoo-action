@@ -548,13 +548,16 @@ function openShipping(b) {
             class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
       </div>
       <div><label class="block text-sm font-medium mb-1">우편번호</label>
-        <input name="postalCode" value="${b.postalCode || ''}" ${readonly?'disabled':''} placeholder="12345"
-          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+        <div class="flex gap-2">
+          <input name="postalCode" id="ship-postal" value="${b.postalCode || ''}" ${readonly?'disabled':''} readonly placeholder="주소검색을 눌러주세요"
+            class="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange bg-gray-50" />
+          ${readonly ? '' : `<button type="button" onclick="searchAddress()" class="shrink-0 bg-brand-dark text-white font-bold px-4 py-2.5 rounded-xl text-sm whitespace-nowrap hover:bg-black"><i class="fas fa-magnifying-glass"></i> 주소검색</button>`}
+        </div></div>
       <div><label class="block text-sm font-medium mb-1">주소 *</label>
-        <input name="address1" value="${b.address1 || ''}" ${readonly?'disabled':''} required placeholder="도로명/지번 주소"
-          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+        <input name="address1" id="ship-addr1" value="${b.address1 || ''}" ${readonly?'disabled':''} required readonly placeholder="주소검색으로 자동 입력됩니다"
+          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange ${readonly?'disabled:bg-gray-50':'bg-gray-50'}" /></div>
       <div><label class="block text-sm font-medium mb-1">상세 주소</label>
-        <input name="address2" value="${b.address2 || ''}" ${readonly?'disabled':''} placeholder="101동 1004호"
+        <input name="address2" id="ship-addr2" value="${b.address2 || ''}" ${readonly?'disabled':''} placeholder="101동 1004호 (직접 입력)"
           class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
       <div><label class="block text-sm font-medium mb-1">배송 메모</label>
         <textarea name="deliveryMemo" ${readonly?'disabled':''} rows="2" placeholder="부재 시 경비실에 맡겨 주세요."
@@ -588,4 +591,24 @@ function openShipping(b) {
       pageBids({}, getQuery())
     } catch (err) { toast(errMsg(err), 'error') }
   })
+}
+
+// 다음(카카오) 우편번호 주소검색 — 팝업으로 주소 선택 시 우편번호/주소 자동 입력
+function searchAddress() {
+  if (typeof daum === 'undefined' || !daum.Postcode) {
+    toast('주소검색 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.', 'error'); return
+  }
+  new daum.Postcode({
+    oncomplete: function (data) {
+      // 도로명 주소 우선, 없으면 지번 주소
+      const addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress
+      const postalEl = document.getElementById('ship-postal')
+      const addr1El = document.getElementById('ship-addr1')
+      const addr2El = document.getElementById('ship-addr2')
+      if (postalEl) postalEl.value = data.zonecode || ''
+      if (addr1El) addr1El.value = addr || ''
+      // 상세주소 입력란으로 포커스 이동
+      if (addr2El) addr2El.focus()
+    },
+  }).open()
 }

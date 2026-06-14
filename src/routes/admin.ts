@@ -517,18 +517,32 @@ admin.post('/charge-requests/:id/process', async (c) => {
 })
 
 // ===== 배송(당첨 상품) 관리 =====
+//   기간 필터: ?from=YYYY-MM-DD&to=YYYY-MM-DD (배송정보 제출일 shippingSubmittedAt 기준, 미제출은 당첨일 drawnAt)
+//   status 필터: ?status=SUBMITTED|PENDING|SHIPPED|DELIVERED
 admin.get('/shipments', async (c) => {
-  const rows = (await c.env.DB.prepare(
-    `SELECT w.*, u.name AS memberName, u.nickname, u.phone AS memberPhone,
-            p.title, p.imageUrl, p.startPrice
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  const statusFilter = c.req.query('status')
+
+  let sql =
+    `SELECT w.*, u.name AS "memberName", u.nickname, u.phone AS "memberPhone",
+            p.title, p.imageUrl, p.startPrice, p.marketPrice
      FROM winners w
      JOIN users u ON u.id = w.userId
      JOIN products p ON p.id = w.productId
-     ORDER BY CASE w.shippingStatus
+     WHERE 1=1`
+  const binds: any[] = []
+  // 기준일 = 배송정보 제출일이 있으면 그것, 없으면 당첨일
+  if (from) { sql += ` AND COALESCE(w.shippingSubmittedAt, w.drawnAt) >= ?`; binds.push(from + ' 00:00:00') }
+  if (to)   { sql += ` AND COALESCE(w.shippingSubmittedAt, w.drawnAt) <= ?`; binds.push(to + ' 23:59:59') }
+  if (statusFilter) { sql += ` AND w.shippingStatus = ?`; binds.push(statusFilter) }
+  sql +=
+    ` ORDER BY CASE w.shippingStatus
                 WHEN 'SUBMITTED' THEN 0 WHEN 'PENDING' THEN 1
                 WHEN 'SHIPPED' THEN 2 ELSE 3 END,
               w.drawnAt DESC`
-  ).all()).results
+
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
   return c.json({ shipments: rows })
 })
 

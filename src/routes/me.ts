@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Bindings, Variables, UserRow } from '../types'
 import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
+import { ensureBidRound } from '../lib/draw'
 
 const me = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 me.use('*', requireAuth)
@@ -49,15 +50,17 @@ me.get('/history', async (c) => {
 })
 
 // 내 참여 내역 (당첨/미당첨)
+//   반복 참여로 같은 제품에 여러 번 참여/당첨될 수 있으므로, 당첨건은 winners.bidId 로 1:1 매칭한다.
 me.get('/bids', async (c) => {
   const user = c.get('user')!
+  await ensureBidRound(c.env.DB)
   const rows = (await c.env.DB.prepare(
     `SELECT b.*, p.title, p.imageUrl, p.marketPrice, p.startPrice, p.losingReward, p.status AS productStatus,
-            w.id AS winnerId, w.finalPrice, w.shippingStatus,
+            w.id AS "winnerId", w.finalPrice, w.shippingStatus,
             w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo
      FROM bids b
      JOIN products p ON p.id = b.productId
-     LEFT JOIN winners w ON w.productId = b.productId AND w.userId = b.userId
+     LEFT JOIN winners w ON w.bidId = b.id
      WHERE b.userId = ? ORDER BY b.createdAt DESC`
   ).bind(user.id).all()).results
   return c.json({ bids: rows })

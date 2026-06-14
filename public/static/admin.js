@@ -823,11 +823,24 @@ async function setSubscriptionUntil(userId) {
   finally { _subSettingUntil.delete(userId) }
 }
 
-// 배송 관리 (당첨 상품 배송)
-async function pageAdminShipments() {
+// 배송 관리 (당첨 상품 배송) — 기간/상태 필터 + 엑셀 복사
+// 현재 조회된 배송 목록을 모듈 변수에 보관(엑셀 복사용)
+let _adminShipments = []
+async function pageAdminShipments(params, query) {
   if (!adminGuard()) return
+  const q = query || getQuery() || {}
+  const from = q.from || ''
+  const to = q.to || ''
+  const stat = q.status || ''
   document.getElementById('app').innerHTML = renderLoading()
-  const { data } = await api.get('/admin/shipments')
+
+  const qs = new URLSearchParams()
+  if (from) qs.set('from', from)
+  if (to) qs.set('to', to)
+  if (stat) qs.set('status', stat)
+  const { data } = await api.get('/admin/shipments' + (qs.toString() ? '?' + qs.toString() : ''))
+  _adminShipments = data.shipments
+
   const badge = (s) => {
     const map = {
       PENDING: ['배송정보 미입력','bg-red-100 text-red-600'],
@@ -837,9 +850,42 @@ async function pageAdminShipments() {
     }
     const [t, cls] = map[s] || [s,'bg-gray-100']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
   }
+  const statOpt = (v, label) => `<option value="${v}" ${stat===v?'selected':''}>${label}</option>`
+
+  // 엑셀에 붙여넣을 수 있는 건수(배송정보 입력된 건만)
+  const copyableCount = data.shipments.filter(s => s.shippingStatus !== 'PENDING').length
+
   document.getElementById('app').innerHTML = adminLayout('/admin/shipments', `
     <h2 class="font-bold mb-1">당첨 상품 배송 관리 (${data.shipments.length})</h2>
-    <p class="text-xs text-gray-400 mb-4"><i class="fas fa-circle-info"></i> 회원이 배송정보를 입력하면 <b>발송대기</b>로 표시됩니다. 발송 처리 후에는 회원이 정보를 수정할 수 없습니다. (당첨 상품은 반품 불가)</p>
+    <p class="text-xs text-gray-400 mb-3"><i class="fas fa-circle-info"></i> 회원이 배송정보를 입력하면 <b>발송대기</b>로 표시됩니다. 발송 처리 후에는 회원이 정보를 수정할 수 없습니다. (당첨 상품은 반품 불가)</p>
+
+    <!-- 기간/상태 필터 + 엑셀 복사 -->
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <div class="flex flex-wrap items-end gap-2">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">시작일</label>
+          <input type="date" id="ship-from" value="${from}" class="px-3 py-2 rounded-xl border border-gray-200 outline-none focus:border-brand-orange text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">종료일</label>
+          <input type="date" id="ship-to" value="${to}" class="px-3 py-2 rounded-xl border border-gray-200 outline-none focus:border-brand-orange text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">상태</label>
+          <select id="ship-status" class="px-3 py-2 rounded-xl border border-gray-200 outline-none focus:border-brand-orange text-sm">
+            ${statOpt('','전체')}${statOpt('SUBMITTED','발송대기')}${statOpt('SHIPPED','발송됨')}${statOpt('DELIVERED','배송완료')}${statOpt('PENDING','미입력')}
+          </select>
+        </div>
+        <button onclick="applyShipFilter()" class="bg-brand-orange text-white font-bold px-4 py-2 rounded-xl text-sm"><i class="fas fa-filter"></i> 조회</button>
+        <button onclick="resetShipFilter()" class="bg-gray-100 text-gray-600 font-bold px-4 py-2 rounded-xl text-sm">초기화</button>
+        <div class="flex-1"></div>
+        <button onclick="copyShipmentsExcel()" class="bg-green-600 text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-green-700">
+          <i class="fas fa-copy"></i> 엑셀 복사 (${copyableCount}건)
+        </button>
+      </div>
+      <p class="text-[11px] text-gray-400 mt-2"><i class="fas fa-lightbulb"></i> 기간은 <b>배송정보 입력일(미입력 시 당첨일)</b> 기준입니다. '엑셀 복사'를 누르면 배송정보가 입력된 건이 탭으로 구분되어 복사되며, 엑셀/구글시트에 바로 붙여넣기(Ctrl+V) 할 수 있습니다.</p>
+    </div>
+
     <div class="space-y-2">
     ${data.shipments.length ? data.shipments.map(s => {
       const hasAddr = s.shippingStatus !== 'PENDING'
@@ -863,15 +909,65 @@ async function pageAdminShipments() {
           ${s.shippingStatus === 'SHIPPED' ? `<button onclick="setShipStatus('${s.id}','DELIVERED')" class="bg-brand-dark text-white px-4 py-2 rounded-xl text-sm font-bold">✅ 배송완료</button>` : ''}
         </div>` : ''}
       </div>`
-    }).join('') : '<p class="text-center text-gray-400 py-10">당첨 상품이 없습니다.</p>'}
+    }).join('') : '<p class="text-center text-gray-400 py-10">조건에 맞는 배송 건이 없습니다.</p>'}
     </div>`)
 }
+
+// 필터 적용 (해시 쿼리로 이동 후 재조회)
+function applyShipFilter() {
+  const from = document.getElementById('ship-from').value
+  const to = document.getElementById('ship-to').value
+  const stat = document.getElementById('ship-status').value
+  const qs = new URLSearchParams()
+  if (from) qs.set('from', from)
+  if (to) qs.set('to', to)
+  if (stat) qs.set('status', stat)
+  Router.navigate('/admin/shipments' + (qs.toString() ? '?' + qs.toString() : ''))
+}
+function resetShipFilter() { Router.navigate('/admin/shipments') }
+
+// 배송정보를 엑셀 붙여넣기용 TSV(탭 구분)로 클립보드에 복사
+async function copyShipmentsExcel() {
+  const rows = (_adminShipments || []).filter(s => s.shippingStatus !== 'PENDING')
+  if (!rows.length) { toast('복사할 배송정보(입력 완료된 건)가 없습니다.', 'warn'); return }
+  const statusLabel = { PENDING: '미입력', SUBMITTED: '발송대기', SHIPPED: '발송됨', DELIVERED: '배송완료' }
+  const header = ['당첨일','상품명','받는분','연락처','우편번호','주소','상세주소','배송메모','회원명','닉네임','낙찰가','배송상태']
+  const esc = (v) => String(v == null ? '' : v).replace(/[\t\r\n]/g, ' ').trim()
+  const lines = [header.join('\t')]
+  for (const s of rows) {
+    lines.push([
+      fmtDateTime(s.shippingSubmittedAt || s.drawnAt),
+      esc(s.title), esc(s.recipientName), esc(s.recipientPhone),
+      esc(s.postalCode), esc(s.address1), esc(s.address2), esc(s.deliveryMemo),
+      esc(s.memberName), esc(s.nickname), esc(s.startPrice),
+      statusLabel[s.shippingStatus] || s.shippingStatus,
+    ].join('\t'))
+  }
+  const tsv = lines.join('\n')
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(tsv)
+    } else {
+      // 폴백: 임시 textarea + execCommand
+      const ta = document.createElement('textarea')
+      ta.value = tsv; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.focus(); ta.select()
+      document.execCommand('copy'); document.body.removeChild(ta)
+    }
+    toast(`${rows.length}건의 배송정보를 복사했어요! 엑셀에 붙여넣기(Ctrl+V) 하세요.`, 'success')
+  } catch (err) {
+    toast('복사에 실패했습니다. 브라우저 권한을 확인해주세요.', 'error')
+  }
+}
+
 async function setShipStatus(id, status) {
   const labels = { SHIPPED: '발송 처리', DELIVERED: '배송완료 처리' }
   if (!confirm(`${labels[status]} 하시겠습니까?`)) return
-  try { await api.post(`/admin/shipments/${id}/status`, { status }); toast('처리되었습니다.', 'success'); pageAdminShipments() }
+  try { await api.post(`/admin/shipments/${id}/status`, { status }); toast('처리되었습니다.', 'success'); applyShipFilterReload() }
   catch (err) { toast(errMsg(err), 'error') }
 }
+// 상태 변경 후 현재 필터 유지하며 재조회
+function applyShipFilterReload() { pageAdminShipments({}, getQuery()) }
 
 // 사이트 설정 + 상품별 개별 설정
 async function pageAdminConfig() {

@@ -8358,6 +8358,7 @@ var QUOTED_COLUMNS = [
   "startAt",
   "endAt",
   "productUrl",
+  "roundNo",
   // bids
   "userId",
   "productId",
@@ -8372,6 +8373,7 @@ var QUOTED_COLUMNS = [
   "deliveryMemo",
   "shippingStatus",
   "shippingSubmittedAt",
+  "bidId",
   // point_history
   "pointKind",
   // withdrawals / charge_requests
@@ -8878,19 +8880,29 @@ function shuffle(arr) {
   }
   return a;
 }
+var _bidRoundReady = false;
+async function ensureBidRound(DB) {
+  if (_bidRoundReady) return;
+  await DB.prepare(`ALTER TABLE bids ADD COLUMN IF NOT EXISTS round INTEGER NOT NULL DEFAULT 0`).run();
+  await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS roundNo INTEGER NOT NULL DEFAULT 0`).run();
+  await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run();
+  _bidRoundReady = true;
+}
 async function drawWinners(DB, product) {
-  const bids = (await DB.prepare("SELECT * FROM bids WHERE productId = ?").bind(product.id).all()).results;
+  await ensureBidRound(DB);
+  const nextRound = (product.roundNo ?? 0) + 1;
+  const bids = (await DB.prepare("SELECT * FROM bids WHERE productId = ? AND round = 0").bind(product.id).all()).results;
   const shuffled = shuffle(bids);
   const winnerBids = shuffled.slice(0, product.winnersCount);
   const loserBids = shuffled.slice(product.winnersCount);
   const stmts = [];
   for (const wb of winnerBids) {
-    stmts.push(DB.prepare("UPDATE bids SET isWinner = 1 WHERE id = ?").bind(wb.id));
+    stmts.push(DB.prepare("UPDATE bids SET isWinner = 1, round = ? WHERE id = ?").bind(nextRound, wb.id));
     stmts.push(
       DB.prepare(
-        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
-         VALUES (?, ?, ?, ?, datetime('now'))`
-      ).bind(genId("w-"), wb.userId, product.id, product.startPrice)
+        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt, bidId)
+         VALUES (?, ?, ?, ?, datetime('now'), ?)`
+      ).bind(genId("w-"), wb.userId, product.id, product.startPrice, wb.id)
     );
     stmts.push(
       DB.prepare(
@@ -8904,6 +8916,7 @@ async function drawWinners(DB, product) {
     );
   }
   for (const lb of loserBids) {
+    stmts.push(DB.prepare("UPDATE bids SET round = ? WHERE id = ?").bind(nextRound, lb.id));
     const refund = lb.pointsUsed;
     const reward = product.losingReward;
     const total = refund + reward;
@@ -8927,7 +8940,11 @@ async function drawWinners(DB, product) {
       );
     }
   }
-  stmts.push(DB.prepare(`UPDATE products SET status = 'DRAWN', endAt = datetime('now') WHERE id = ?`).bind(product.id));
+  stmts.push(
+    DB.prepare(
+      `UPDATE products SET status = 'OPEN', participantCount = 0, roundNo = ? WHERE id = ?`
+    ).bind(nextRound, product.id)
+  );
   await DB.batch(stmts);
   return {
     winners: winnerBids.map((b2) => b2.userId),
@@ -8989,24 +9006,25 @@ products.get("/", async (c) => {
 products.get("/:id", async (c) => {
   const id = c.req.param("id");
   await ensureProductUrlColumn(c.env.DB);
+  await ensureBidRound(c.env.DB);
   const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   const participants = (await c.env.DB.prepare(
     `SELECT b.userId, b.isWinner, b.createdAt, u.nickname
      FROM bids b JOIN users u ON u.id = b.userId
-     WHERE b.productId = ? ORDER BY b.createdAt ASC`
+     WHERE b.productId = ? AND b.round = 0 ORDER BY b.createdAt ASC`
   ).bind(id).all()).results;
   const winners = (await c.env.DB.prepare(
-    `SELECT w.userId, w.finalPrice, u.nickname FROM winners w JOIN users u ON u.id = w.userId WHERE w.productId = ?`
+    `SELECT w.userId, w.finalPrice, u.nickname FROM winners w JOIN users u ON u.id = w.userId WHERE w.productId = ? ORDER BY w.drawnAt DESC`
   ).bind(id).all()).results;
   const user = c.get("user");
   let myBid = null;
   let myBidCount = 0;
   if (user) {
-    const cntRow = await c.env.DB.prepare("SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ?").bind(user.id, id).first();
+    const cntRow = await c.env.DB.prepare("SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ? AND round = 0").bind(user.id, id).first();
     myBidCount = cntRow?.c ?? 0;
     if (myBidCount > 0) {
-      myBid = await c.env.DB.prepare("SELECT * FROM bids WHERE userId = ? AND productId = ? ORDER BY createdAt DESC").bind(user.id, id).first();
+      myBid = await c.env.DB.prepare("SELECT * FROM bids WHERE userId = ? AND productId = ? AND round = 0 ORDER BY createdAt DESC").bind(user.id, id).first();
     }
   }
   return c.json({ product, participants, winners, myBid, myBidCount });
@@ -9023,6 +9041,7 @@ products.post("/:id/join", requireAuth, async (c) => {
     return c.json({ error: `\uACBD\uB9E4 \uCC38\uC5EC \uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uD544\uC694: ${product.entryFee.toLocaleString()}P, \uBCF4\uC720: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400);
   }
   await ensureRepeatBids(c.env.DB);
+  await ensureBidRound(c.env.DB);
   if (product.participantCount >= product.maxParticipants) {
     return c.json({ error: "\uC815\uC6D0\uC774 \uBAA8\uB450 \uCC3C\uC2B5\uB2C8\uB2E4." }, 400);
   }
@@ -9115,13 +9134,14 @@ me.get("/history", async (c) => {
 });
 me.get("/bids", async (c) => {
   const user = c.get("user");
+  await ensureBidRound(c.env.DB);
   const rows = (await c.env.DB.prepare(
     `SELECT b.*, p.title, p.imageUrl, p.marketPrice, p.startPrice, p.losingReward, p.status AS productStatus,
-            w.id AS winnerId, w.finalPrice, w.shippingStatus,
+            w.id AS "winnerId", w.finalPrice, w.shippingStatus,
             w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo
      FROM bids b
      JOIN products p ON p.id = b.productId
-     LEFT JOIN winners w ON w.productId = b.productId AND w.userId = b.userId
+     LEFT JOIN winners w ON w.bidId = b.id
      WHERE b.userId = ? ORDER BY b.createdAt DESC`
   ).bind(user.id).all()).results;
   return c.json({ bids: rows });
@@ -9781,17 +9801,33 @@ admin.post("/charge-requests/:id/process", async (c) => {
   return c.json({ ok: true, status: "COMPLETED" });
 });
 admin.get("/shipments", async (c) => {
-  const rows = (await c.env.DB.prepare(
-    `SELECT w.*, u.name AS memberName, u.nickname, u.phone AS memberPhone,
-            p.title, p.imageUrl, p.startPrice
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  const statusFilter = c.req.query("status");
+  let sql = `SELECT w.*, u.name AS "memberName", u.nickname, u.phone AS "memberPhone",
+            p.title, p.imageUrl, p.startPrice, p.marketPrice
      FROM winners w
      JOIN users u ON u.id = w.userId
      JOIN products p ON p.id = w.productId
-     ORDER BY CASE w.shippingStatus
+     WHERE 1=1`;
+  const binds = [];
+  if (from) {
+    sql += ` AND COALESCE(w.shippingSubmittedAt, w.drawnAt) >= ?`;
+    binds.push(from + " 00:00:00");
+  }
+  if (to) {
+    sql += ` AND COALESCE(w.shippingSubmittedAt, w.drawnAt) <= ?`;
+    binds.push(to + " 23:59:59");
+  }
+  if (statusFilter) {
+    sql += ` AND w.shippingStatus = ?`;
+    binds.push(statusFilter);
+  }
+  sql += ` ORDER BY CASE w.shippingStatus
                 WHEN 'SUBMITTED' THEN 0 WHEN 'PENDING' THEN 1
                 WHEN 'SHIPPED' THEN 2 ELSE 3 END,
-              w.drawnAt DESC`
-  ).all()).results;
+              w.drawnAt DESC`;
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results;
   return c.json({ shipments: rows });
 });
 admin.post("/shipments/:id/status", async (c) => {
@@ -9961,6 +9997,8 @@ function renderApp() {
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  {/* \uB2E4\uC74C(\uCE74\uCE74\uC624) \uC6B0\uD3B8\uBC88\uD638 \uC8FC\uC18C\uAC80\uC0C9 \uC11C\uBE44\uC2A4 \u2014 \uBB34\uB8CC, \uD0A4 \uBD88\uD544\uC694 */}
+  <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
   <script>
     tailwind.config = {
       theme: {

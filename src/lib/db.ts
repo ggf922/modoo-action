@@ -29,12 +29,12 @@ const QUOTED_COLUMNS = [
   // products
   'imageUrl', 'marketPrice', 'startPrice', 'entryFee', 'maxParticipants',
   'winnersCount', 'losingReward', 'sortOrder', 'participantCount', 'startAt', 'endAt',
-  'productUrl',
+  'productUrl', 'roundNo',
   // bids
   'userId', 'productId', 'pointsUsed', 'isWinner',
   // winners
   'finalPrice', 'drawnAt', 'recipientName', 'recipientPhone', 'postalCode',
-  'deliveryMemo', 'shippingStatus', 'shippingSubmittedAt',
+  'deliveryMemo', 'shippingStatus', 'shippingSubmittedAt', 'bidId',
   // point_history
   'pointKind',
   // withdrawals / charge_requests
