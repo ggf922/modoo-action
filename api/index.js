@@ -8903,14 +8903,27 @@ async function drawWinners(DB, product) {
       )
     );
   }
-  if (product.losingReward > 0) {
-    for (const lb of loserBids) {
-      stmts.push(DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(product.losingReward, lb.userId));
+  for (const lb of loserBids) {
+    const refund = lb.pointsUsed;
+    const reward = product.losingReward;
+    const total = refund + reward;
+    if (total > 0) {
+      stmts.push(DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(total, lb.userId));
+    }
+    if (refund > 0) {
       stmts.push(
         DB.prepare(
           `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
            VALUES (?, ?, 'REWARD', 'AUCTION', ?, ?, datetime('now'))`
-        ).bind(genId("ph-"), lb.userId, product.losingReward, `\uBBF8\uB2F9\uCCA8 \uBCF4\uC0C1(\uACBD\uB9E4P \uD658\uAE09): ${product.title}`)
+        ).bind(genId("ph-"), lb.userId, refund, `\uBBF8\uB2F9\uCCA8 \uCC38\uAC00\uBE44 \uD658\uAE09: ${product.title}`)
+      );
+    }
+    if (reward > 0) {
+      stmts.push(
+        DB.prepare(
+          `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+           VALUES (?, ?, 'REWARD', 'AUCTION', ?, ?, datetime('now'))`
+        ).bind(genId("ph-"), lb.userId, reward, `\uBBF8\uB2F9\uCCA8 \uBCF4\uC0C1(\uACBD\uB9E4P \uD658\uAE09): ${product.title}`)
       );
     }
   }
@@ -8952,6 +8965,12 @@ async function ensureProductUrlColumn(DB) {
   await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS productUrl TEXT NOT NULL DEFAULT ''`).run();
   _productUrlReady = true;
 }
+var _repeatBidsReady = false;
+async function ensureRepeatBids(DB) {
+  if (_repeatBidsReady) return;
+  await DB.prepare(`ALTER TABLE bids DROP CONSTRAINT IF EXISTS "bids_userId_productId_key"`).run();
+  _repeatBidsReady = true;
+}
 products.get("/", async (c) => {
   const status = c.req.query("status");
   const cacheKey2 = `products:${status || "ALL"}`;
@@ -8982,10 +9001,15 @@ products.get("/:id", async (c) => {
   ).bind(id).all()).results;
   const user = c.get("user");
   let myBid = null;
+  let myBidCount = 0;
   if (user) {
-    myBid = await c.env.DB.prepare("SELECT * FROM bids WHERE userId = ? AND productId = ?").bind(user.id, id).first();
+    const cntRow = await c.env.DB.prepare("SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ?").bind(user.id, id).first();
+    myBidCount = cntRow?.c ?? 0;
+    if (myBidCount > 0) {
+      myBid = await c.env.DB.prepare("SELECT * FROM bids WHERE userId = ? AND productId = ? ORDER BY createdAt DESC").bind(user.id, id).first();
+    }
   }
-  return c.json({ product, participants, winners, myBid });
+  return c.json({ product, participants, winners, myBid, myBidCount });
 });
 products.post("/:id/join", requireAuth, async (c) => {
   const id = c.req.param("id");
@@ -8998,8 +9022,7 @@ products.post("/:id/join", requireAuth, async (c) => {
   if (dbUser.auctionPoint < product.entryFee) {
     return c.json({ error: `\uACBD\uB9E4 \uCC38\uC5EC \uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uD544\uC694: ${product.entryFee.toLocaleString()}P, \uBCF4\uC720: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400);
   }
-  const dup = await c.env.DB.prepare("SELECT id FROM bids WHERE userId = ? AND productId = ?").bind(user.id, id).first();
-  if (dup) return c.json({ error: "\uC774\uBBF8 \uCC38\uC5EC\uD55C \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 409);
+  await ensureRepeatBids(c.env.DB);
   if (product.participantCount >= product.maxParticipants) {
     return c.json({ error: "\uC815\uC6D0\uC774 \uBAA8\uB450 \uCC3C\uC2B5\uB2C8\uB2E4." }, 400);
   }
@@ -9021,9 +9044,6 @@ products.post("/:id/join", requireAuth, async (c) => {
   } catch (e) {
     if (e?.name === "BatchGuardError") {
       return c.json({ error: "\uC815\uC6D0\uC774 \uBAA8\uB450 \uCC3C\uC2B5\uB2C8\uB2E4." }, 400);
-    }
-    if (String(e?.message || "").includes("bids_userId_productId") || e?.code === "23505") {
-      return c.json({ error: "\uC774\uBBF8 \uCC38\uC5EC\uD55C \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 409);
     }
     throw e;
   }

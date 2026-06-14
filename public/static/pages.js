@@ -237,10 +237,11 @@ async function pageProduct(params) {
   let res
   try { res = await api.get('/products/' + id) }
   catch { document.getElementById('app').innerHTML = renderNotFound(); return }
-  const { product: p, participants, winners, myBid } = res.data
+  const { product: p, participants, winners, myBid, myBidCount = 0 } = res.data
   const discount = Math.round((1 - p.startPrice / p.marketPrice) * 100)
   const isOpen = p.status === 'OPEN'
   const u = Store.user
+  const remaining = Math.max(0, (p.maxParticipants || 0) - (participants.length || 0)) // 남은 정원
 
   const participantBadges = participants.length
     ? participants.map(pt => `<span class="inline-flex items-center gap-1 text-xs bg-gray-100 px-2.5 py-1 rounded-full ${pt.isWinner ? 'bg-brand-gold/30 font-bold' : ''}">
@@ -255,13 +256,17 @@ async function pageProduct(params) {
       ${winners.length ? `<p class="text-sm text-gray-500">당첨자: ${winners.map(w => '👑 ' + w.nickname).join(', ')}</p>` : ''}
       ${iWon ? '<p class="text-brand-orange font-bold mt-2">🎉 회원님이 당첨되셨습니다!</p>' : ''}
     </div>`
-  } else if (myBid) {
-    actionBtn = `<div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center text-green-700 font-bold">
-      <i class="fas fa-check-circle"></i> 이미 참여한 경매입니다. 정원이 차면 자동 추첨돼요!</div>`
   } else {
-    actionBtn = `<button onclick="joinAuction('${p.id}', ${p.entryFee})"
-      class="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition text-lg shadow-lg shadow-orange-200">
-      <i class="fas fa-gavel"></i> ${won(p.startPrice)}P로 경매 참여하기</button>`
+    // 반복 참여 허용: 경매포인트가 있는 한 같은 경매에 여러 번 참여 가능
+    const myCountBadge = myBidCount > 0
+      ? `<div class="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-2 text-center text-sm text-green-700 font-bold">
+          <i class="fas fa-check-circle"></i> 현재 ${myBidCount}회 참여 중입니다. 정원이 차면 자동 추첨돼요!</div>`
+      : ''
+    actionBtn = `${myCountBadge}
+      <button onclick="joinAuction('${p.id}', ${p.entryFee})"
+        class="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition text-lg shadow-lg shadow-orange-200">
+        <i class="fas fa-gavel"></i> ${won(p.startPrice)}P로 ${myBidCount > 0 ? '추가 ' : ''}경매 참여하기</button>
+      <p class="text-xs text-gray-400 text-center mt-2">남은 정원 ${remaining}자리 · 경매포인트가 있는 한 반복 참여할 수 있어요</p>`
   }
 
   document.getElementById('app').innerHTML = layout(`

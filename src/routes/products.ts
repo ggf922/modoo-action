@@ -15,6 +15,18 @@ export async function ensureProductUrlColumn(DB: any) {
   _productUrlReady = true
 }
 
+// 반복 참여 허용: bids 의 UNIQUE(userId, productId) 제약을 제거 (프로덕션 런타임 보장)
+//   → 회원이 경매포인트가 있는 한 같은 경매에 여러 번 참여할 수 있다.
+//   ⚠️ 제약명에 대문자(userId/productId)가 포함되므로 반드시 큰따옴표로 감싸야 한다.
+//      (따옴표 없으면 PostgreSQL 이 소문자로 정규화해 "존재하지 않음"으로 처리되어 제거 실패)
+let _repeatBidsReady = false
+export async function ensureRepeatBids(DB: any) {
+  if (_repeatBidsReady) return
+  // IF EXISTS 라 제약이 이미 없어도 안전.
+  await DB.prepare(`ALTER TABLE bids DROP CONSTRAINT IF EXISTS "bids_userId_productId_key"`).run()
+  _repeatBidsReady = true
+}
+
 // 상품 목록 (각 상품의 참여자 수 포함)
 // 성능:
 //  1) participantCount 비정규화 컬럼 사용 (bids COUNT 서브쿼리 제거)
@@ -57,11 +69,17 @@ products.get('/:id', async (c) => {
 
   const user = c.get('user')
   let myBid = null
+  let myBidCount = 0
   if (user) {
-    myBid = await c.env.DB.prepare('SELECT * FROM bids WHERE userId = ? AND productId = ?').bind(user.id, id).first()
+    // 반복 참여 허용: 내 참여 건수 집계 (가장 최근 1건은 myBid 로 하위호환 제공)
+    const cntRow = await c.env.DB.prepare('SELECT COUNT(*) AS c FROM bids WHERE userId = ? AND productId = ?').bind(user.id, id).first<{ c: number }>()
+    myBidCount = cntRow?.c ?? 0
+    if (myBidCount > 0) {
+      myBid = await c.env.DB.prepare('SELECT * FROM bids WHERE userId = ? AND productId = ? ORDER BY createdAt DESC').bind(user.id, id).first()
+    }
   }
 
-  return c.json({ product, participants, winners, myBid })
+  return c.json({ product, participants, winners, myBid, myBidCount })
 })
 
 // 경매 참여 (트랜잭션 + 정원 도달 시 자동 추첨)
@@ -81,9 +99,9 @@ products.post('/:id/join', requireAuth, async (c) => {
     return c.json({ error: `경매 참여 포인트가 부족합니다. (필요: ${product.entryFee.toLocaleString()}P, 보유: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400)
   }
 
-  // 2. 중복 참여 차단
-  const dup = await c.env.DB.prepare('SELECT id FROM bids WHERE userId = ? AND productId = ?').bind(user.id, id).first()
-  if (dup) return c.json({ error: '이미 참여한 경매입니다.' }, 409)
+  // 2. 반복 참여 허용: 같은 경매에 경매포인트가 있는 한 여러 번 참여 가능
+  //    (UNIQUE(userId, productId) 제약은 ensureRepeatBids 로 제거됨)
+  await ensureRepeatBids(c.env.DB)
 
   // 3. 정원 초과 차단 (비정규화 컬럼으로 사전 확인 — 빠른 거부)
   if (product.participantCount >= product.maxParticipants) {
@@ -111,12 +129,9 @@ products.post('/:id/join', requireAuth, async (c) => {
       ).bind(genId('ph-'), user.id, -product.entryFee, `경매 참여: ${product.title}`),
     ])
   } catch (e: any) {
-    // 정원 가드 실패 → 정원 마감. 그 외 에러(예: UNIQUE 중복참여)도 안전하게 안내.
+    // 정원 가드 실패 → 정원 마감.
     if (e?.name === 'BatchGuardError') {
       return c.json({ error: '정원이 모두 찼습니다.' }, 400)
-    }
-    if (String(e?.message || '').includes('bids_userId_productId') || e?.code === '23505') {
-      return c.json({ error: '이미 참여한 경매입니다.' }, 409)
     }
     throw e
   }

@@ -19,8 +19,9 @@ function shuffle<T>(arr: T[]): T[] {
  * 1. 모든 Bid 랜덤 셔플
  * 2. 앞에서 winnersCount명 → 당첨자
  * 3. 나머지 → 미당첨자
- * 4. 당첨자: isWinner=true + Winner 레코드 + 자동 구매 처리
- * 5. 미당첨자: auctionPoint += losingReward + 내역 (미낙찰 보상은 경매포인트로 환급되어 재참여 가능)
+ * 4. 당첨자: isWinner=true + Winner 레코드 + 자동 구매 처리 (참여 시 차감한 낙찰가로 제품 구매 확정)
+ * 5. 미당첨자: auctionPoint += (참가비 원금 pointsUsed + losingReward) 환급
+ *            → 미당첨분은 참가비를 돌려받고 추가로 미당첨 보상까지 받아 경매포인트로 재참여 가능
  * 6. product.status = DRAWN, endAt = now()
  */
 export async function drawWinners(DB: D1Database, product: ProductRow): Promise<{
@@ -57,15 +58,30 @@ export async function drawWinners(DB: D1Database, product: ProductRow): Promise<
     )
   }
 
-  // 미당첨자 보상 — 경매포인트로 환급(다시 경매에 사용 가능)
-  if (product.losingReward > 0) {
-    for (const lb of loserBids) {
-      stmts.push(DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(product.losingReward, lb.userId))
+  // 미당첨자 정산 — 참가비 원금 환급 + 미당첨 보상(둘 다 경매포인트로 환급 → 다시 경매에 사용 가능)
+  for (const lb of loserBids) {
+    const refund = lb.pointsUsed              // 참가비 원금 환급
+    const reward = product.losingReward       // 미당첨 보상
+    const total = refund + reward
+    if (total > 0) {
+      stmts.push(DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(total, lb.userId))
+    }
+    // 원금 환급 내역
+    if (refund > 0) {
       stmts.push(
         DB.prepare(
           `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
            VALUES (?, ?, 'REWARD', 'AUCTION', ?, ?, datetime('now'))`
-        ).bind(genId('ph-'), lb.userId, product.losingReward, `미당첨 보상(경매P 환급): ${product.title}`)
+        ).bind(genId('ph-'), lb.userId, refund, `미당첨 참가비 환급: ${product.title}`)
+      )
+    }
+    // 미당첨 보상 내역
+    if (reward > 0) {
+      stmts.push(
+        DB.prepare(
+          `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+           VALUES (?, ?, 'REWARD', 'AUCTION', ?, ?, datetime('now'))`
+        ).bind(genId('ph-'), lb.userId, reward, `미당첨 보상(경매P 환급): ${product.title}`)
       )
     }
   }
