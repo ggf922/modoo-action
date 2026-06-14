@@ -641,6 +641,38 @@ admin.post('/subscriptions/:userId/extend', async (c) => {
   return c.json({ ok: true, until: newUntil })
 })
 
+// 회원 구독 만료일 직접 설정 (관리자가 날짜를 임의 지정)
+// 예: "2026-10-30" → "2026-07-31" 로 수정
+admin.post('/subscriptions/:userId/set-until', async (c) => {
+  await ensureSubscriptionSchema(c.env.DB)
+  const userId = c.req.param('userId')
+  const b = await c.req.json().catch(() => null)
+  const until = b?.until ? String(b.until).trim() : ''
+
+  // 날짜 형식 검증 (YYYY-MM-DD) + 유효한 실제 날짜인지 확인
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+    return c.json({ error: '날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)' }, 400)
+  }
+  const [y, m, d] = until.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    return c.json({ error: '존재하지 않는 날짜입니다.' }, 400)
+  }
+
+  const u = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first()
+  if (!u) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+
+  // 오늘(KST) 기준으로 만료일이 미래/오늘이면 활성, 과거면 비활성으로 자동 설정
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+  const active = until >= today ? 1 : 0
+
+  await c.env.DB.prepare(
+    'UPDATE users SET subscriptionUntil = ?, subscriptionActive = ? WHERE id = ?'
+  ).bind(until, active, userId).run()
+  return c.json({ ok: true, until, active: !!active })
+})
+
 // ===== 사이트 설정 =====
 admin.get('/config', async (c) => {
   const config = await c.env.DB.prepare('SELECT * FROM site_config LIMIT 1').first()

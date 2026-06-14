@@ -138,12 +138,17 @@ function renderMiniGauge(current, max) {
   </div>`
 }
 
-// 상품 카드
-function renderProductCard(p) {
+// 상품 카드 (featured=true 이면 '추천 제품'으로 강하게 강조)
+function renderProductCard(p, featured) {
   const discount = Math.round((1 - p.startPrice / p.marketPrice) * 100)
   const isDrawn = p.status === 'DRAWN'
+  // 추천 카드: 주황 링 + 강한 그림자 + 상단 추천 배지
+  const featuredWrap = featured
+    ? 'ring-2 ring-brand-orange shadow-lg shadow-orange-200/60 relative'
+    : 'border border-gray-100'
   return `
-  <a href="#/products/${p.id}" class="group bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block">
+  <a href="#/products/${p.id}" class="group bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block ${featuredWrap}">
+    ${featured ? `<div class="absolute z-20 top-0 left-1/2 -translate-x-1/2 bg-gradient-to-r from-brand-orange to-red-500 text-white text-xs font-extrabold px-3 py-1 rounded-b-lg shadow-md flex items-center gap-1 whitespace-nowrap"><i class="fas fa-star animate-pulse"></i> 추천 제품</div>` : ''}
     <div class="relative aspect-square overflow-hidden bg-gray-100">
       <img src="${p.imageUrl}" alt="${p.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"
            onerror="this.src='https://placehold.co/800x800/FF6B35/fff?text=모두모두'" />
@@ -153,7 +158,7 @@ function renderProductCard(p) {
     </div>
     <div class="p-4">
       <span class="text-sm text-gray-400">${p.category}</span>
-      <h3 class="font-bold text-lg mt-0.5 mb-2 line-clamp-1">${p.title}</h3>
+      <h3 class="font-bold text-lg mt-0.5 mb-2 line-clamp-1">${featured ? '<i class="fas fa-crown text-brand-orange mr-1"></i>' : ''}${p.title}</h3>
       <div class="flex items-baseline gap-2">
         <span class="text-gray-400 text-base line-through-soft">${won(p.marketPrice)}원</span>
       </div>

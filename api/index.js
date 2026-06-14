@@ -9850,6 +9850,29 @@ admin.post("/subscriptions/:userId/extend", async (c) => {
   ).bind(newUntil, userId).run();
   return c.json({ ok: true, until: newUntil });
 });
+admin.post("/subscriptions/:userId/set-until", async (c) => {
+  await ensureSubscriptionSchema(c.env.DB);
+  const userId = c.req.param("userId");
+  const b2 = await c.req.json().catch(() => null);
+  const until = b2?.until ? String(b2.until).trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+    return c.json({ error: "\uB0A0\uC9DC \uD615\uC2DD\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. (YYYY-MM-DD)" }, 400);
+  }
+  const [y, m, d] = until.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    return c.json({ error: "\uC874\uC7AC\uD558\uC9C0 \uC54A\uB294 \uB0A0\uC9DC\uC785\uB2C8\uB2E4." }, 400);
+  }
+  const u = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+  if (!u) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1e3);
+  const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+  const active = until >= today ? 1 : 0;
+  await c.env.DB.prepare(
+    "UPDATE users SET subscriptionUntil = ?, subscriptionActive = ? WHERE id = ?"
+  ).bind(until, active, userId).run();
+  return c.json({ ok: true, until, active: !!active });
+});
 admin.get("/config", async (c) => {
   const config = await c.env.DB.prepare("SELECT * FROM site_config LIMIT 1").first();
   return c.json({ config });

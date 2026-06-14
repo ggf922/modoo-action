@@ -758,9 +758,15 @@ async function pageAdminSubscriptions() {
               : '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">비활성</span>'}
           </div>
           <div class="text-xs text-gray-400 mt-0.5">
-            최근 납부 ${s.lastPeriod || '-'} · 총 ${s.payCount || 0}회 · 구독만료 ${s.subscriptionUntil || '-'}
+            최근 납부 ${s.lastPeriod || '-'} · 총 ${s.payCount || 0}회
           </div>
-          <div class="text-xs text-gray-300">${s.email} · 보유 경매P ${won(s.auctionPoint || 0)}</div>
+          <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span class="text-xs text-gray-500">구독만료</span>
+            <input type="date" id="sub-until-${s.id}" value="${s.subscriptionUntil || ''}"
+                   class="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:border-brand-orange focus:ring-1 focus:ring-orange-100 outline-none" />
+            <button onclick="setSubscriptionUntil('${s.id}')" class="text-xs bg-blue-50 text-blue-600 font-semibold px-2.5 py-1 rounded-lg hover:bg-blue-100 transition"><i class="fas fa-pen"></i> 변경</button>
+          </div>
+          <div class="text-xs text-gray-300 mt-0.5">${s.email} · 보유 경매P ${won(s.auctionPoint || 0)}</div>
         </div>
         <div class="flex gap-2">
           ${s.subscriptionActive
@@ -795,6 +801,22 @@ async function extendSubscription(userId) {
     pageAdminSubscriptions()
   } catch (err) { toast(errMsg(err), 'error') }
   finally { _subExtending.delete(userId) }
+}
+// 구독 만료일 직접 설정 (관리자가 날짜를 지정)
+const _subSettingUntil = new Set()
+async function setSubscriptionUntil(userId) {
+  if (_subSettingUntil.has(userId)) return
+  const input = document.getElementById('sub-until-' + userId)
+  const until = input ? input.value : ''
+  if (!until) { toast('만료일을 선택해주세요.', 'error'); return }
+  if (!confirm(`구독 만료일을 ${until} 로 변경하시겠습니까?`)) return
+  _subSettingUntil.add(userId)
+  try {
+    const { data } = await api.post(`/admin/subscriptions/${userId}/set-until`, { until })
+    toast(`구독 만료일이 ${data.until}(으)로 변경되었습니다.${data.active ? '' : ' (만료일이 지나 비활성 처리됨)'}`, 'success')
+    pageAdminSubscriptions()
+  } catch (err) { toast(errMsg(err), 'error') }
+  finally { _subSettingUntil.delete(userId) }
 }
 
 // 배송 관리 (당첨 상품 배송)
