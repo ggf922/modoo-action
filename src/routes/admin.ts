@@ -7,6 +7,7 @@ import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth } from './me'
+import { ensureProductUrlColumn } from './products'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -76,22 +77,24 @@ admin.post('/products', async (c) => {
   // 참가비는 시작가와 동일하게 자동 설정
   const entryFee = sp
   const id = genId('p-')
+  await ensureProductUrlColumn(c.env.DB)
   // 새 상품은 목록 맨 뒤로 (현재 최대 sortOrder + 1)
   const maxOrder = (await c.env.DB.prepare('SELECT COALESCE(MAX(sortOrder), -1) AS m FROM products').first<{ m: number }>())?.m ?? -1
   await c.env.DB.prepare(
-    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, startAt, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, datetime('now'), datetime('now'))`
+    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, productUrl, startAt, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, datetime('now'), datetime('now'))`
   ).bind(
     id, b.title, b.description ?? '', b.imageUrl, b.category,
     mp, sp, entryFee,
     Number(b.maxParticipants ?? 10), Number(b.winnersCount ?? 1), Number(b.losingReward ?? 200),
-    maxOrder + 1
+    maxOrder + 1, (b.productUrl ?? '').trim()
   ).run()
   invalidate('products')
   return c.json({ ok: true, id })
 })
 
 admin.get('/products/:id', async (c) => {
+  await ensureProductUrlColumn(c.env.DB)
   const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(c.req.param('id')).first()
   if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
   return c.json({ product })
@@ -107,13 +110,14 @@ admin.put('/products/:id', async (c) => {
   if (sp > mp) return c.json({ error: '시작가는 시중가보다 클 수 없습니다.' }, 400)
   // 참가비는 시작가와 동일하게 자동 설정
   const entryFee = sp
+  await ensureProductUrlColumn(c.env.DB)
   await c.env.DB.prepare(
-    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=? WHERE id=?`
+    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=?, productUrl=? WHERE id=?`
   ).bind(
     b.title, b.description ?? '', b.imageUrl, b.category,
     mp, sp, entryFee,
     Number(b.maxParticipants), Number(b.winnersCount), Number(b.losingReward),
-    b.status ?? 'OPEN', id
+    b.status ?? 'OPEN', (b.productUrl ?? '').trim(), id
   ).run()
   invalidate('products')
   return c.json({ ok: true })

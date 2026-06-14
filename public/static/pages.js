@@ -287,7 +287,10 @@ async function pageProduct(params) {
         <div class="bg-blue-50 rounded-xl py-3"><div class="text-gray-500 text-xs">당첨</div><div class="font-bold text-blue-600">${p.winnersCount}명</div></div>
         <div class="bg-green-50 rounded-xl py-3"><div class="text-gray-500 text-xs">미당첨 보상</div><div class="font-bold text-green-600">${won(p.losingReward)}P</div></div>
       </div>
-      <p class="text-gray-600 text-sm leading-relaxed mb-5">${p.description}</p>
+      <p class="text-gray-600 text-sm leading-relaxed mb-3">${p.description}</p>
+      ${p.productUrl ? `<a href="${p.productUrl}" target="_blank" rel="noopener noreferrer"
+        class="flex items-center justify-center gap-2 w-full mb-5 bg-white border-2 border-brand-orange text-brand-orange font-bold py-3 rounded-xl hover:bg-orange-50 transition">
+        <i class="fas fa-arrow-up-right-from-square"></i> 제품 자세히 보기</a>` : '<div class="mb-5"></div>'}
       ${actionBtn}
     </div>
   </div>

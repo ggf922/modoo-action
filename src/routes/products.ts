@@ -7,6 +7,14 @@ import { cached, invalidate } from '../lib/cache'
 
 const products = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+// 상품 외부 링크(productUrl) 컬럼 런타임 보장 (프로덕션 Supabase 수동 마이그레이션 불가 대응)
+let _productUrlReady = false
+export async function ensureProductUrlColumn(DB: any) {
+  if (_productUrlReady) return
+  await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS productUrl TEXT NOT NULL DEFAULT ''`).run()
+  _productUrlReady = true
+}
+
 // 상품 목록 (각 상품의 참여자 수 포함)
 // 성능:
 //  1) participantCount 비정규화 컬럼 사용 (bids COUNT 서브쿼리 제거)
@@ -31,6 +39,7 @@ products.get('/', async (c) => {
 // 상품 상세 (참여자 목록 + 본인 참여여부)
 products.get('/:id', async (c) => {
   const id = c.req.param('id')
+  await ensureProductUrlColumn(c.env.DB)
   const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>()
   if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
 

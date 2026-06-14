@@ -29,6 +29,7 @@ const QUOTED_COLUMNS = [
   // products
   'imageUrl', 'marketPrice', 'startPrice', 'entryFee', 'maxParticipants',
   'winnersCount', 'losingReward', 'sortOrder', 'participantCount', 'startAt', 'endAt',
+  'productUrl',
   // bids
   'userId', 'productId', 'pointsUsed', 'isWinner',
   // winners

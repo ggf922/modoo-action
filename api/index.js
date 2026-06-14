@@ -8357,6 +8357,7 @@ var QUOTED_COLUMNS = [
   "participantCount",
   "startAt",
   "endAt",
+  "productUrl",
   // bids
   "userId",
   "productId",
@@ -8945,6 +8946,12 @@ function invalidate(keyOrPrefix) {
 
 // src/routes/products.ts
 var products = new Hono2();
+var _productUrlReady = false;
+async function ensureProductUrlColumn(DB) {
+  if (_productUrlReady) return;
+  await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS productUrl TEXT NOT NULL DEFAULT ''`).run();
+  _productUrlReady = true;
+}
 products.get("/", async (c) => {
   const status = c.req.query("status");
   const cacheKey2 = `products:${status || "ALL"}`;
@@ -8962,6 +8969,7 @@ products.get("/", async (c) => {
 });
 products.get("/:id", async (c) => {
   const id = c.req.param("id");
+  await ensureProductUrlColumn(c.env.DB);
   const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   const participants = (await c.env.DB.prepare(
@@ -9381,10 +9389,11 @@ admin.post("/products", async (c) => {
   if (sp > mp) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD074 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
   const entryFee = sp;
   const id = genId("p-");
+  await ensureProductUrlColumn(c.env.DB);
   const maxOrder = (await c.env.DB.prepare("SELECT COALESCE(MAX(sortOrder), -1) AS m FROM products").first())?.m ?? -1;
   await c.env.DB.prepare(
-    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, startAt, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, datetime('now'), datetime('now'))`
+    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, productUrl, startAt, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, datetime('now'), datetime('now'))`
   ).bind(
     id,
     b2.title,
@@ -9397,12 +9406,14 @@ admin.post("/products", async (c) => {
     Number(b2.maxParticipants ?? 10),
     Number(b2.winnersCount ?? 1),
     Number(b2.losingReward ?? 200),
-    maxOrder + 1
+    maxOrder + 1,
+    (b2.productUrl ?? "").trim()
   ).run();
   invalidate("products");
   return c.json({ ok: true, id });
 });
 admin.get("/products/:id", async (c) => {
+  await ensureProductUrlColumn(c.env.DB);
   const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(c.req.param("id")).first();
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   return c.json({ product });
@@ -9416,8 +9427,9 @@ admin.put("/products/:id", async (c) => {
   if (sp <= 0) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 0\uBCF4\uB2E4 \uCEE4\uC57C \uD569\uB2C8\uB2E4." }, 400);
   if (sp > mp) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD074 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
   const entryFee = sp;
+  await ensureProductUrlColumn(c.env.DB);
   await c.env.DB.prepare(
-    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=? WHERE id=?`
+    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=?, productUrl=? WHERE id=?`
   ).bind(
     b2.title,
     b2.description ?? "",
@@ -9430,6 +9442,7 @@ admin.put("/products/:id", async (c) => {
     Number(b2.winnersCount),
     Number(b2.losingReward),
     b2.status ?? "OPEN",
+    (b2.productUrl ?? "").trim(),
     id
   ).run();
   invalidate("products");

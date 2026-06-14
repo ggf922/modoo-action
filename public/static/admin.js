@@ -186,6 +186,10 @@ async function pageAdminProductForm(params) {
       <div><label class="block text-sm font-medium mb-1">설명</label>
         <textarea name="description" rows="3" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange">${p.description||''}</textarea></div>
 
+      <div><label class="block text-sm font-medium mb-1">제품 링크 <span class="text-gray-400 font-normal">— 상세페이지 "제품 자세히 보기" 버튼</span></label>
+        <input name="productUrl" type="url" value="${(p.productUrl ?? '').replace(/"/g, '&quot;')}" placeholder="예: https://nangman.waveon.me/" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
+        <p class="text-xs text-gray-400 mt-1"><i class="fas fa-circle-info"></i> 입력하면 상품 상세페이지 설명 아래에 외부 링크 버튼이 표시됩니다. 비워두면 표시되지 않아요.</p></div>
+
       <!-- 상품 상세 이미지 업로드 (로컬 파일 → 자동 압축 → Base64) -->
       <div>
         <label class="block text-sm font-medium mb-1">상품 상세 이미지 *</label>
