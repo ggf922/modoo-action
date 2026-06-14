@@ -9534,7 +9534,7 @@ admin.get("/members", async (c) => {
   const q = c.req.query("q");
   let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.grade, u.auctionPoint, u.balancePoint, u.wagePoint,
                     u.referralCode, u.referrerId, u.createdAt,
-                    r.nickname AS referrerNickname
+                    r.nickname AS "referrerNickname"
              FROM users u LEFT JOIN users r ON r.id = u.referrerId`;
   const binds = [];
   if (q) {
@@ -9645,7 +9645,7 @@ admin.get("/members/:id", async (c) => {
     `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role, u.grade,
             u.auctionPoint, u.balancePoint, u.wagePoint, u.referralCode, u.referrerId,
             u.bankName, u.bankAccount, u.accountHolder, u.createdAt,
-            r.nickname AS referrerNickname, r.name AS referrerName
+            r.nickname AS "referrerNickname", r.name AS "referrerName"
      FROM users u LEFT JOIN users r ON r.id = u.referrerId
      WHERE u.id = ?`
   ).bind(c.req.param("id")).first();
