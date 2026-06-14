@@ -521,59 +521,61 @@ function openShipping(b) {
   const readonly = ss === 'SHIPPED' || ss === 'DELIVERED'
   const u = Store.user || {}
   openModal(`
-    <div class="text-center mb-4">
-      <div class="text-3xl mb-2">🎁</div>
-      <h3 class="text-lg font-extrabold">배송 정보 입력</h3>
-      <p class="text-sm text-gray-500 mt-1 truncate">${b.title}</p>
-    </div>
-
-    <!-- 반품 불가 안내 (필수 고지) -->
-    <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex gap-2">
-      <i class="fas fa-triangle-exclamation text-red-500 mt-0.5"></i>
-      <p class="text-xs text-red-600 leading-relaxed">
-        <b>[반품 불가]</b> 본 상품은 경매 낙찰로 자동 구매된 당첨 상품으로,
-        <b>단순 변심·주문 착오 등 어떠한 사유로도 반품·교환·환불이 불가능</b>합니다.
-        배송 정보를 정확히 확인 후 신청해 주세요.
-      </p>
-    </div>
-
-    <form id="shipping-form" class="space-y-3 text-left">
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-sm font-medium mb-1">받는 분 *</label>
-          <input name="recipientName" value="${b.recipientName || u.name || ''}" ${readonly?'disabled':''} required
-            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
-        <div><label class="block text-sm font-medium mb-1">연락처 *</label>
-          <input name="recipientPhone" value="${b.recipientPhone || u.phone || ''}" ${readonly?'disabled':''} required placeholder="010-0000-0000"
-            class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
+    <div class="p-7 sm:p-9">
+      <div class="text-center mb-7">
+        <div class="text-5xl mb-3">🎁</div>
+        <h3 class="text-2xl font-extrabold">배송 정보 입력</h3>
+        <p class="text-base text-gray-500 mt-2 truncate">${b.title}</p>
       </div>
-      <div><label class="block text-sm font-medium mb-1">우편번호</label>
-        <div class="flex gap-2">
-          <input name="postalCode" id="ship-postal" value="${b.postalCode || ''}" ${readonly?'disabled':''} readonly placeholder="주소검색을 눌러주세요"
-            class="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange bg-gray-50" />
-          ${readonly ? '' : `<button type="button" onclick="searchAddress()" class="shrink-0 bg-brand-dark text-white font-bold px-4 py-2.5 rounded-xl text-sm whitespace-nowrap hover:bg-black"><i class="fas fa-magnifying-glass"></i> 주소검색</button>`}
-        </div></div>
-      <div><label class="block text-sm font-medium mb-1">주소 *</label>
-        <input name="address1" id="ship-addr1" value="${b.address1 || ''}" ${readonly?'disabled':''} required readonly placeholder="주소검색으로 자동 입력됩니다"
-          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange ${readonly?'disabled:bg-gray-50':'bg-gray-50'}" /></div>
-      <div><label class="block text-sm font-medium mb-1">상세 주소</label>
-        <input name="address2" id="ship-addr2" value="${b.address2 || ''}" ${readonly?'disabled':''} placeholder="101동 1004호 (직접 입력)"
-          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange disabled:bg-gray-50" /></div>
-      <div><label class="block text-sm font-medium mb-1">배송 메모</label>
-        <textarea name="deliveryMemo" ${readonly?'disabled':''} rows="2" placeholder="부재 시 경비실에 맡겨 주세요."
-          class="w-full px-3 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange resize-none disabled:bg-gray-50">${b.deliveryMemo || ''}</textarea></div>
 
-      ${readonly
-        ? `<div class="text-center text-sm text-gray-400 py-1"><i class="fas fa-lock mr-1"></i>이미 발송 처리되어 수정할 수 없습니다.</div>`
-        : `<label class="flex items-start gap-2 cursor-pointer bg-gray-50 rounded-xl p-3">
-            <input type="checkbox" id="ship-agree" class="mt-0.5 w-4 h-4 accent-brand-orange shrink-0" />
-            <span class="text-sm text-gray-600"><b class="text-gray-800">[필수]</b> 위 <b class="text-red-500">반품 불가</b> 안내를 확인했으며, 배송 정보 제출에 동의합니다.</span>
-          </label>
-          <div class="flex gap-2 pt-1">
-            <button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl">취소</button>
-            <button type="submit" class="flex-1 bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600">배송정보 저장</button>
-          </div>`}
-    </form>
-  `)
+      <!-- 반품 불가 안내 (필수 고지) -->
+      <div class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-7 flex gap-3">
+        <i class="fas fa-triangle-exclamation text-red-500 text-lg mt-0.5"></i>
+        <p class="text-sm text-red-600 leading-relaxed">
+          <b>[반품 불가]</b> 본 상품은 경매 낙찰로 자동 구매된 당첨 상품으로,
+          <b>단순 변심·주문 착오 등 어떠한 사유로도 반품·교환·환불이 불가능</b>합니다.
+          배송 정보를 정확히 확인 후 신청해 주세요.
+        </p>
+      </div>
+
+      <form id="shipping-form" class="space-y-5 text-left">
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="block text-sm font-semibold mb-2 text-gray-700">받는 분 *</label>
+            <input name="recipientName" value="${b.recipientName || u.name || ''}" ${readonly?'disabled':''} required
+              class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 disabled:bg-gray-50" /></div>
+          <div><label class="block text-sm font-semibold mb-2 text-gray-700">연락처 *</label>
+            <input name="recipientPhone" value="${b.recipientPhone || u.phone || ''}" ${readonly?'disabled':''} required placeholder="010-0000-0000"
+              class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 disabled:bg-gray-50" /></div>
+        </div>
+        <div><label class="block text-sm font-semibold mb-2 text-gray-700">우편번호</label>
+          <div class="flex gap-3">
+            <input name="postalCode" id="ship-postal" value="${b.postalCode || ''}" ${readonly?'disabled':''} readonly placeholder="주소검색을 눌러주세요"
+              class="flex-1 px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 bg-gray-50" />
+            ${readonly ? '' : `<button type="button" onclick="searchAddress()" class="shrink-0 bg-brand-dark text-white font-bold px-5 py-3.5 rounded-xl text-base whitespace-nowrap hover:bg-black"><i class="fas fa-magnifying-glass mr-1"></i> 주소검색</button>`}
+          </div></div>
+        <div><label class="block text-sm font-semibold mb-2 text-gray-700">주소 *</label>
+          <input name="address1" id="ship-addr1" value="${b.address1 || ''}" ${readonly?'disabled':''} required readonly placeholder="주소검색으로 자동 입력됩니다"
+            class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 ${readonly?'disabled:bg-gray-50':'bg-gray-50'}" /></div>
+        <div><label class="block text-sm font-semibold mb-2 text-gray-700">상세 주소</label>
+          <input name="address2" id="ship-addr2" value="${b.address2 || ''}" ${readonly?'disabled':''} placeholder="101동 1004호 (직접 입력)"
+            class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 disabled:bg-gray-50" /></div>
+        <div><label class="block text-sm font-semibold mb-2 text-gray-700">배송 메모</label>
+          <textarea name="deliveryMemo" ${readonly?'disabled':''} rows="3" placeholder="부재 시 경비실에 맡겨 주세요."
+            class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 resize-none disabled:bg-gray-50">${b.deliveryMemo || ''}</textarea></div>
+
+        ${readonly
+          ? `<div class="text-center text-sm text-gray-400 py-2"><i class="fas fa-lock mr-1"></i>이미 발송 처리되어 수정할 수 없습니다.</div>`
+          : `<label class="flex items-start gap-3 cursor-pointer bg-gray-50 rounded-xl p-4 mt-1">
+              <input type="checkbox" id="ship-agree" class="mt-0.5 w-5 h-5 accent-brand-orange shrink-0" />
+              <span class="text-sm text-gray-600 leading-relaxed"><b class="text-gray-800">[필수]</b> 위 <b class="text-red-500">반품 불가</b> 안내를 확인했으며, 배송 정보 제출에 동의합니다.</span>
+            </label>
+            <div class="flex gap-3 pt-3">
+              <button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-4 text-base rounded-xl hover:bg-gray-200">취소</button>
+              <button type="submit" class="flex-1 bg-brand-orange text-white font-bold py-4 text-base rounded-xl hover:bg-orange-600">배송정보 저장</button>
+            </div>`}
+      </form>
+    </div>
+  `, { maxWidth: 'max-w-lg' })
 
   if (readonly) return
   document.getElementById('shipping-form').addEventListener('submit', async (e) => {

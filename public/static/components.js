@@ -180,7 +180,7 @@ function openModal(html, opts = {}) {
   root.innerHTML = `
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4" onclick="${opts.dismissable === false ? '' : 'closeModal(event)'}">
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fadeup"></div>
-    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-pop" onclick="event.stopPropagation()">
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full ${opts.maxWidth || 'max-w-md'} max-h-[90vh] overflow-y-auto animate-pop" onclick="event.stopPropagation()">
       ${html}
     </div>
   </div>`
