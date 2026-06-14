@@ -12,6 +12,7 @@ function adminLayout(active, content) {
     ['/admin/members', 'fa-users', '회원관리'],
     ['/admin/grade-grant', 'fa-layer-group', '등급지급'],
     ['/admin/charges', 'fa-coins', '충전관리'],
+    ['/admin/subscriptions', 'fa-crown', '구독관리'],
     ['/admin/shipments', 'fa-truck-fast', '배송관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
     ['/admin/config', 'fa-gear', '설정'],
@@ -729,6 +730,56 @@ async function processCharge(id, action) {
   try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges() }
   catch (err) { toast(errMsg(err), 'error') }
   finally { _chargeProcessing.delete(id) }
+}
+
+// 구독 관리 — 구독료를 납부한 회원 목록 + 활성/비활성 토글
+async function pageAdminSubscriptions() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  const { data } = await api.get('/admin/subscriptions')
+  const subs = data.subscriptions || []
+  const activeCount = subs.filter(s => s.subscriptionActive).length
+  document.getElementById('app').innerHTML = adminLayout('/admin/subscriptions', `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="font-bold">구독 회원 관리 (${subs.length}명)</h2>
+      <span class="text-sm text-gray-400">활성 <b class="text-green-600">${activeCount}</b> · 비활성 <b class="text-gray-500">${subs.length - activeCount}</b></span>
+    </div>
+    <div class="bg-orange-50 rounded-2xl px-4 py-3 mb-4 text-xs text-gray-500">
+      <i class="fas fa-circle-info text-brand-orange"></i> 회원이 월 구독료(10,000P)를 납부하면 목록에 표시됩니다. 활성/비활성 버튼으로 각 회원의 구독 상태를 관리할 수 있습니다.
+    </div>
+    <div class="space-y-2">
+    ${subs.length ? subs.map(s => `
+      <div class="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap items-center gap-3 justify-between">
+        <div>
+          <div class="font-bold flex items-center gap-2">
+            ${s.name}<span class="text-gray-400 font-normal">(@${s.nickname})</span>
+            ${s.subscriptionActive
+              ? '<span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">활성</span>'
+              : '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">비활성</span>'}
+          </div>
+          <div class="text-xs text-gray-400 mt-0.5">
+            최근 납부 ${s.lastPeriod || '-'} · 총 ${s.payCount || 0}회 · 구독만료 ${s.subscriptionUntil || '-'}
+          </div>
+          <div class="text-xs text-gray-300">${s.email} · 보유 경매P ${won(s.auctionPoint || 0)}</div>
+        </div>
+        <div class="flex gap-2">
+          ${s.subscriptionActive
+            ? `<button onclick="toggleSubscription('${s.id}', false)" class="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl text-sm font-medium">비활성화</button>`
+            : `<button onclick="toggleSubscription('${s.id}', true)" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">활성화</button>`}
+        </div>
+      </div>`).join('') : '<p class="text-center text-gray-400 py-10">구독료를 납부한 회원이 없습니다.</p>'}
+    </div>`)
+}
+const _subToggling = new Set()
+async function toggleSubscription(userId, active) {
+  if (_subToggling.has(userId)) return
+  _subToggling.add(userId)
+  try {
+    await api.post(`/admin/subscriptions/${userId}/toggle`, { active })
+    toast(active ? '구독을 활성화했습니다.' : '구독을 비활성화했습니다.', 'success')
+    pageAdminSubscriptions()
+  } catch (err) { toast(errMsg(err), 'error') }
+  finally { _subToggling.delete(userId) }
 }
 
 // 배송 관리 (당첨 상품 배송)

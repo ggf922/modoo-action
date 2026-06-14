@@ -23,6 +23,9 @@ const QUOTED_COLUMNS = [
   // users
   'auctionPoint', 'balancePoint', 'wagePoint', 'referrerId', 'referralCode',
   'bankName', 'bankAccount', 'accountHolder', 'createdAt', 'updatedAt',
+  'subscriptionActive', 'subscriptionUntil',
+  // subscription_payments
+  'paidAt',
   // products
   'imageUrl', 'marketPrice', 'startPrice', 'entryFee', 'maxParticipants',
   'winnersCount', 'losingReward', 'sortOrder', 'participantCount', 'startAt', 'endAt',

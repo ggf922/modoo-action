@@ -163,6 +163,120 @@ me.post('/bank', async (c) => {
   return c.json({ ok: true })
 })
 
+// ===== 월 구독료 납부 =====
+const SUBSCRIPTION_FEE = 10000 // 월 구독료(경매 포인트)
+
+// 구독 스키마 자동 보장 (production Supabase에 수동 마이그레이션 없이 안전하게 적용)
+// PostgreSQL의 IF NOT EXISTS 로 멱등 보장. 콜드스타트 간 1회만 시도.
+let _subSchemaReady = false
+export async function ensureSubscriptionSchema(DB: any) {
+  if (_subSchemaReady) return
+  try {
+    await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscriptionActive INTEGER NOT NULL DEFAULT 0`).run()
+    await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscriptionUntil TEXT`).run()
+    await DB.prepare(
+      `CREATE TABLE IF NOT EXISTS subscription_payments (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PAID',
+        paidAt TEXT NOT NULL DEFAULT (datetime('now'))
+      )`
+    ).run()
+    await DB.prepare(`CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(userId)`).run()
+    await DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_user_period ON subscription_payments(userId, period)`).run()
+    _subSchemaReady = true
+  } catch (e) {
+    // 스키마 보장 실패는 치명적이지 않게 로깅만 (다음 요청에서 재시도)
+    console.error('ensureSubscriptionSchema 실패:', e)
+  }
+}
+
+// 현재 월(KST) "YYYY-MM" 및 해당 월 말일 "YYYY-MM-DD" 계산
+function currentPeriodKST() {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000) // UTC+9
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth() // 0-based
+  const period = `${y}-${String(m + 1).padStart(2, '0')}`
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate() // 해당 월 말일
+  const until = `${period}-${String(lastDay).padStart(2, '0')}`
+  const label = `${m + 1}월` // "6월"
+  return { period, until, label }
+}
+
+// 내 구독 상태
+me.get('/subscription', async (c) => {
+  const user = c.get('user')!
+  await ensureSubscriptionSchema(c.env.DB)
+  const u = await c.env.DB.prepare(
+    'SELECT subscriptionActive, subscriptionUntil FROM users WHERE id = ?'
+  ).bind(user.id).first<{ subscriptionActive: number; subscriptionUntil: string | null }>()
+  const { period } = currentPeriodKST()
+  const paid = await c.env.DB.prepare(
+    'SELECT id FROM subscription_payments WHERE userId = ? AND period = ?'
+  ).bind(user.id, period).first()
+  const payments = (await c.env.DB.prepare(
+    'SELECT * FROM subscription_payments WHERE userId = ? ORDER BY paidAt DESC LIMIT 24'
+  ).bind(user.id).all()).results
+  return c.json({
+    active: !!(u?.subscriptionActive),
+    until: u?.subscriptionUntil ?? null,
+    paidThisMonth: !!paid,
+    period,
+    fee: SUBSCRIPTION_FEE,
+    payments,
+  })
+})
+
+// 구독료 납부 (경매 포인트 10,000P 차감 → 당월 구독 활성화)
+me.post('/subscription', async (c) => {
+  const user = c.get('user')!
+  await ensureSubscriptionSchema(c.env.DB)
+  const { period, until, label } = currentPeriodKST()
+
+  // 이미 당월 납부했는지 확인
+  const exist = await c.env.DB.prepare(
+    'SELECT id FROM subscription_payments WHERE userId = ? AND period = ?'
+  ).bind(user.id, period).first()
+  if (exist) return c.json({ error: `이미 ${label} 구독료를 납부하셨습니다.` }, 400)
+
+  // 잔액 확인
+  const dbUser = await c.env.DB.prepare('SELECT auctionPoint FROM users WHERE id = ?')
+    .bind(user.id).first<{ auctionPoint: number }>()
+  if (!dbUser) return c.json({ error: '사용자 정보를 찾을 수 없습니다.' }, 404)
+  if (dbUser.auctionPoint < SUBSCRIPTION_FEE) {
+    return c.json({ error: `경매 포인트가 부족합니다. 구독료는 ${SUBSCRIPTION_FEE.toLocaleString()}P이며 현재 보유 ${dbUser.auctionPoint.toLocaleString()}P 입니다.` }, 400)
+  }
+
+  // batch: 납부기록(유니크로 중복방지) + 포인트 차감 + 구독 활성화 + 내역 기록
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO subscription_payments (id, userId, amount, period, status, paidAt)
+         VALUES (?, ?, ?, ?, 'PAID', datetime('now'))`
+      ).bind(genId('sub-'), user.id, SUBSCRIPTION_FEE, period),
+      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?')
+        .bind(SUBSCRIPTION_FEE, user.id, SUBSCRIPTION_FEE).requireRows(),
+      c.env.DB.prepare("UPDATE users SET subscriptionActive = 1, subscriptionUntil = ? WHERE id = ?")
+        .bind(until, user.id),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), user.id, -SUBSCRIPTION_FEE, `${label} 월 구독료 납부`),
+    ])
+  } catch (e: any) {
+    // 동시 클릭으로 잔액 부족 가드(requireRows) 또는 유니크 충돌
+    const msg = String(e?.message || e)
+    if (e?.name === 'BatchGuardError' || /unique|uq_subscription/i.test(msg)) {
+      return c.json({ error: '구독료 납부 처리 중 오류가 발생했습니다. (중복 또는 잔액 부족)' }, 400)
+    }
+    throw e
+  }
+
+  return c.json({ ok: true, period, label, fee: SUBSCRIPTION_FEE })
+})
+
 // 조직도 (본인 산하만, 최대 5단계) — 상위(referrer) 절대 노출 금지
 me.get('/network', async (c) => {
   const user = c.get('user')!

@@ -197,7 +197,8 @@ auth.get('/me', requireAuth, async (c) => {
   const sessionUser = c.get('user')!
   const user = await c.env.DB.prepare(
     `SELECT id, email, name, phone, nickname, role, grade, auctionPoint, balancePoint, wagePoint,
-            referralCode, referrerId, bankName, bankAccount, accountHolder, createdAt
+            referralCode, referrerId, bankName, bankAccount, accountHolder, createdAt,
+            subscriptionActive, subscriptionUntil
      FROM users WHERE id = ?`
   ).bind(sessionUser.id).first()
   return c.json({ user })

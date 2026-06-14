@@ -8341,6 +8341,10 @@ var QUOTED_COLUMNS = [
   "accountHolder",
   "createdAt",
   "updatedAt",
+  "subscriptionActive",
+  "subscriptionUntil",
+  // subscription_payments
+  "paidAt",
   // products
   "imageUrl",
   "marketPrice",
@@ -8856,7 +8860,8 @@ auth.get("/me", requireAuth, async (c) => {
   const sessionUser = c.get("user");
   const user = await c.env.DB.prepare(
     `SELECT id, email, name, phone, nickname, role, grade, auctionPoint, balancePoint, wagePoint,
-            referralCode, referrerId, bankName, bankAccount, accountHolder, createdAt
+            referralCode, referrerId, bankName, bankAccount, accountHolder, createdAt,
+            subscriptionActive, subscriptionUntil
      FROM users WHERE id = ?`
   ).bind(sessionUser.id).first();
   return c.json({ user });
@@ -9166,6 +9171,97 @@ me.post("/bank", async (c) => {
     "UPDATE users SET bankName = ?, bankAccount = ?, accountHolder = ?, updatedAt = datetime('now') WHERE id = ?"
   ).bind(bankName, bankAccount, accountHolder, user.id).run();
   return c.json({ ok: true });
+});
+var SUBSCRIPTION_FEE = 1e4;
+var _subSchemaReady = false;
+async function ensureSubscriptionSchema(DB) {
+  if (_subSchemaReady) return;
+  try {
+    await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscriptionActive INTEGER NOT NULL DEFAULT 0`).run();
+    await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscriptionUntil TEXT`).run();
+    await DB.prepare(
+      `CREATE TABLE IF NOT EXISTS subscription_payments (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PAID',
+        paidAt TEXT NOT NULL DEFAULT (datetime('now'))
+      )`
+    ).run();
+    await DB.prepare(`CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(userId)`).run();
+    await DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_user_period ON subscription_payments(userId, period)`).run();
+    _subSchemaReady = true;
+  } catch (e) {
+    console.error("ensureSubscriptionSchema \uC2E4\uD328:", e);
+  }
+}
+function currentPeriodKST() {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1e3);
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const period = `${y}-${String(m + 1).padStart(2, "0")}`;
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const until = `${period}-${String(lastDay).padStart(2, "0")}`;
+  const label = `${m + 1}\uC6D4`;
+  return { period, until, label };
+}
+me.get("/subscription", async (c) => {
+  const user = c.get("user");
+  await ensureSubscriptionSchema(c.env.DB);
+  const u = await c.env.DB.prepare(
+    "SELECT subscriptionActive, subscriptionUntil FROM users WHERE id = ?"
+  ).bind(user.id).first();
+  const { period } = currentPeriodKST();
+  const paid = await c.env.DB.prepare(
+    "SELECT id FROM subscription_payments WHERE userId = ? AND period = ?"
+  ).bind(user.id, period).first();
+  const payments = (await c.env.DB.prepare(
+    "SELECT * FROM subscription_payments WHERE userId = ? ORDER BY paidAt DESC LIMIT 24"
+  ).bind(user.id).all()).results;
+  return c.json({
+    active: !!u?.subscriptionActive,
+    until: u?.subscriptionUntil ?? null,
+    paidThisMonth: !!paid,
+    period,
+    fee: SUBSCRIPTION_FEE,
+    payments
+  });
+});
+me.post("/subscription", async (c) => {
+  const user = c.get("user");
+  await ensureSubscriptionSchema(c.env.DB);
+  const { period, until, label } = currentPeriodKST();
+  const exist = await c.env.DB.prepare(
+    "SELECT id FROM subscription_payments WHERE userId = ? AND period = ?"
+  ).bind(user.id, period).first();
+  if (exist) return c.json({ error: `\uC774\uBBF8 ${label} \uAD6C\uB3C5\uB8CC\uB97C \uB0A9\uBD80\uD558\uC168\uC2B5\uB2C8\uB2E4.` }, 400);
+  const dbUser = await c.env.DB.prepare("SELECT auctionPoint FROM users WHERE id = ?").bind(user.id).first();
+  if (!dbUser) return c.json({ error: "\uC0AC\uC6A9\uC790 \uC815\uBCF4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (dbUser.auctionPoint < SUBSCRIPTION_FEE) {
+    return c.json({ error: `\uACBD\uB9E4 \uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. \uAD6C\uB3C5\uB8CC\uB294 ${SUBSCRIPTION_FEE.toLocaleString()}P\uC774\uBA70 \uD604\uC7AC \uBCF4\uC720 ${dbUser.auctionPoint.toLocaleString()}P \uC785\uB2C8\uB2E4.` }, 400);
+  }
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO subscription_payments (id, userId, amount, period, status, paidAt)
+         VALUES (?, ?, ?, ?, 'PAID', datetime('now'))`
+      ).bind(genId("sub-"), user.id, SUBSCRIPTION_FEE, period),
+      c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?").bind(SUBSCRIPTION_FEE, user.id, SUBSCRIPTION_FEE).requireRows(),
+      c.env.DB.prepare("UPDATE users SET subscriptionActive = 1, subscriptionUntil = ? WHERE id = ?").bind(until, user.id),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), user.id, -SUBSCRIPTION_FEE, `${label} \uC6D4 \uAD6C\uB3C5\uB8CC \uB0A9\uBD80`)
+    ]);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (e?.name === "BatchGuardError" || /unique|uq_subscription/i.test(msg)) {
+      return c.json({ error: "\uAD6C\uB3C5\uB8CC \uB0A9\uBD80 \uCC98\uB9AC \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4. (\uC911\uBCF5 \uB610\uB294 \uC794\uC561 \uBD80\uC871)" }, 400);
+    }
+    throw e;
+  }
+  return c.json({ ok: true, period, label, fee: SUBSCRIPTION_FEE });
 });
 me.get("/network", async (c) => {
   const user = c.get("user");
@@ -9699,6 +9795,35 @@ admin.post("/withdrawals/:id/process", async (c) => {
   ];
   await c.env.DB.batch(stmts);
   return c.json({ ok: true, status: "COMPLETED" });
+});
+admin.get("/subscriptions", async (c) => {
+  await ensureSubscriptionSchema(c.env.DB);
+  const rows = (await c.env.DB.prepare(
+    `SELECT u.id, u.name, u.nickname, u.email, u.grade,
+            u.subscriptionActive, u.subscriptionUntil, u.auctionPoint,
+            sp_last.period AS lastPeriod, sp_last.paidAt AS lastPaidAt,
+            sp_cnt.cnt AS payCount
+     FROM users u
+     JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
+     LEFT JOIN (
+       SELECT sp1.userId, sp1.period, sp1.paidAt FROM subscription_payments sp1
+       JOIN (SELECT userId, MAX(paidAt) AS mx FROM subscription_payments GROUP BY userId) m
+         ON m.userId = sp1.userId AND m.mx = sp1.paidAt
+     ) sp_last ON sp_last.userId = u.id
+     LEFT JOIN (SELECT userId, COUNT(*) AS cnt FROM subscription_payments GROUP BY userId) sp_cnt
+       ON sp_cnt.userId = u.id
+     ORDER BY u.subscriptionActive DESC, sp_last.paidAt DESC`
+  ).all()).results;
+  return c.json({ subscriptions: rows });
+});
+admin.post("/subscriptions/:userId/toggle", async (c) => {
+  const userId = c.req.param("userId");
+  const b2 = await c.req.json().catch(() => null);
+  const active = b2?.active ? 1 : 0;
+  const u = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+  if (!u) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  await c.env.DB.prepare("UPDATE users SET subscriptionActive = ? WHERE id = ?").bind(active, userId).run();
+  return c.json({ ok: true, active: !!active });
 });
 admin.get("/config", async (c) => {
   const config = await c.env.DB.prepare("SELECT * FROM site_config LIMIT 1").first();

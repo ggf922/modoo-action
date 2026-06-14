@@ -6,6 +6,7 @@ import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
+import { ensureSubscriptionSchema } from './me'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -587,6 +588,41 @@ admin.post('/withdrawals/:id/process', async (c) => {
   ]
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, status: 'COMPLETED' })
+})
+
+// ===== 구독 관리 =====
+// 구독 신청(납부)한 회원 목록 — 회원별 최근 납부 내역과 활성 상태
+admin.get('/subscriptions', async (c) => {
+  await ensureSubscriptionSchema(c.env.DB)
+  const rows = (await c.env.DB.prepare(
+    `SELECT u.id, u.name, u.nickname, u.email, u.grade,
+            u.subscriptionActive, u.subscriptionUntil, u.auctionPoint,
+            sp_last.period AS lastPeriod, sp_last.paidAt AS lastPaidAt,
+            sp_cnt.cnt AS payCount
+     FROM users u
+     JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
+     LEFT JOIN (
+       SELECT sp1.userId, sp1.period, sp1.paidAt FROM subscription_payments sp1
+       JOIN (SELECT userId, MAX(paidAt) AS mx FROM subscription_payments GROUP BY userId) m
+         ON m.userId = sp1.userId AND m.mx = sp1.paidAt
+     ) sp_last ON sp_last.userId = u.id
+     LEFT JOIN (SELECT userId, COUNT(*) AS cnt FROM subscription_payments GROUP BY userId) sp_cnt
+       ON sp_cnt.userId = u.id
+     ORDER BY u.subscriptionActive DESC, sp_last.paidAt DESC`
+  ).all()).results
+  return c.json({ subscriptions: rows })
+})
+
+// 회원 구독 활성/비활성 토글
+admin.post('/subscriptions/:userId/toggle', async (c) => {
+  const userId = c.req.param('userId')
+  const b = await c.req.json().catch(() => null)
+  const active = b?.active ? 1 : 0
+  const u = await c.env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first()
+  if (!u) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+  await c.env.DB.prepare('UPDATE users SET subscriptionActive = ? WHERE id = ?')
+    .bind(active, userId).run()
+  return c.json({ ok: true, active: !!active })
 })
 
 // ===== 사이트 설정 =====

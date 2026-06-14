@@ -146,8 +146,22 @@ async function pageMypage() {
   </div>
 
   <div class="bg-gradient-to-br from-brand-orange to-red-500 text-white rounded-2xl p-6 mb-4">
-    <div class="text-sm text-white/80">경매 포인트 (보유)</div>
-    <div class="text-4xl font-extrabold mt-1">${won(total)}<span class="text-xl">P</span></div>
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="text-sm text-white/80">경매 포인트 (보유)</div>
+        <div class="text-4xl font-extrabold mt-1">${won(total)}<span class="text-xl">P</span></div>
+      </div>
+      <div id="subscription-box" class="w-full max-w-[280px]">
+        <button onclick="paySubscription()" class="w-full bg-white text-brand-orange font-bold px-4 py-3 rounded-xl shadow-md hover:bg-orange-50 transition flex items-center justify-center gap-2">
+          <i class="fas fa-crown"></i> 월 구독료 납부
+        </button>
+        <div class="text-[11px] text-white/80 mt-1.5 text-center leading-snug">
+          ${u.subscriptionActive
+            ? `<i class="fas fa-circle-check"></i> 구독 활성화됨${u.subscriptionUntil ? ` (~${u.subscriptionUntil})` : ''}`
+            : '월 10,000P · 모두모두 혜택 받기'}
+        </div>
+      </div>
+    </div>
     <div class="flex gap-2 mt-4">
       <a href="#/mypage/charge" class="flex-1 text-center bg-white/20 hover:bg-white/30 transition text-white px-3 py-2.5 rounded-xl font-semibold text-sm"><i class="fas fa-plus"></i> 충전하기</a>
       <a href="#/mypage/withdraw" class="flex-1 text-center bg-white text-brand-orange px-3 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-money-bill-wave"></i> 출금하기</a>
@@ -166,6 +180,27 @@ async function pageMypage() {
     ${menuTile('#/mypage/password', 'fa-key', '비밀번호 변경')}
   </div>`)
 }
+// 월 구독료 납부 (경매 포인트 10,000P 차감 → 당월 구독 활성화)
+let _subscriptionPaying = false
+async function paySubscription() {
+  if (_subscriptionPaying) return // 중복 클릭 방지
+  // 현재 월 라벨 (예: "6월")
+  const month = new Date().getMonth() + 1
+  if (!confirm(`${month}월 구독료 10,000P를 납부하시겠습니까?\n경매 포인트에서 차감되며, 모두모두 혜택을 받을 수 있습니다.`)) return
+  _subscriptionPaying = true
+  try {
+    const { data } = await api.post('/me/subscription', {})
+    const label = data.label || (month + '월')
+    toast(`${label} 구독료입니다. 그리고 모두모두에서의 혜택을 받을 수 있습니다! 🎁`, 'success')
+    await Store.loadMe()
+    if (location.hash.startsWith('#/mypage')) pageMypage()
+  } catch (err) {
+    toast(errMsg(err), 'error')
+  } finally {
+    _subscriptionPaying = false
+  }
+}
+
 function menuTile(href, icon, label) {
   return `<a href="${href}" class="bg-white rounded-2xl border border-gray-100 p-5 text-center hover:shadow-md hover:-translate-y-0.5 transition">
     <div class="text-2xl text-brand-orange mb-2"><i class="fas ${icon}"></i></div>
