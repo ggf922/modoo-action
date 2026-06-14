@@ -183,4 +183,4 @@ npm run typecheck
 - **마이그레이션 검증**: ✅ 실제 PostgreSQL 17에서 핵심 플로우 e2e 검증 완료 (관리자 로그인 · 회원가입+추천보너스 · 상품 CRUD · ILIKE 회원검색 · 대시보드 통계 6종 · **batch 트랜잭션 포인트 지급**)
 - **타입체크**: ✅ `tsc --noEmit` 통과
 - **배포 가이드**: [DEPLOY.md](./DEPLOY.md) (Supabase 스키마 → Vercel 환경변수 → 배포 → 커스텀 도메인 → 보안 체크리스트)
-- **최종 업데이트**: 2026-06-12 (**Vercel + Supabase 마이그레이션**: Hono 유지 · D1→PostgreSQL 어댑터(`src/lib/db.ts`, SQL 자동변환) · `api/index.ts` Vercel 진입점 · `vercel.json` 라우팅 · postgres.js Transaction Pooler) / 이전: 단일 경매P 체계 개편 · 회원 등급 6단계
+- **최종 업데이트**: 2026-06-14 (**상품 외부 링크 기능**: 상품에 `productUrl` 컬럼 추가 → 관리자 상품 등록/수정 폼에서 링크 입력 가능 · 상품 상세페이지 설명 아래 "제품 자세히 보기" 외부 링크 버튼 표시(새 탭, 링크 없으면 미표시) · 프로덕션 Supabase 런타임 `ADD COLUMN IF NOT EXISTS` 자동 보장) / 이전: Vercel + Supabase 마이그레이션 · 단일 경매P 체계 개편 · 회원 등급 6단계
