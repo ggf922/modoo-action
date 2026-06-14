@@ -205,6 +205,27 @@ function currentPeriodKST() {
   return { period, until, label }
 }
 
+// 오늘(KST) 날짜 "YYYY-MM-DD"
+function todayKST(): string {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`
+}
+
+// 기준일에서 한 달 연장한 날짜 "YYYY-MM-DD" 반환.
+// baseUntil 이 없거나 오늘보다 과거이면 오늘을 기준으로 한 달 연장한다.
+// (말일 보정: 1/31 + 1개월 → 2월말 등 자연스럽게 처리)
+export function extendOneMonth(baseUntil: string | null): string {
+  const today = todayKST()
+  const base = (baseUntil && baseUntil >= today) ? baseUntil : today
+  const [y, m, d] = base.split('-').map(Number)
+  // 다음 달 같은 날. 다음 달에 해당 일이 없으면 그 달 말일로 보정.
+  const targetMonthLast = new Date(Date.UTC(y, m, 0)).getUTCDate() // 현재 달 말일(참고용)
+  const nextMonthLast = new Date(Date.UTC(y, m + 1, 0)).getUTCDate() // 다음 달 말일
+  const day = Math.min(d, nextMonthLast)
+  const dt = new Date(Date.UTC(y, m, day)) // m은 0-based 기준 다음 달
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
 // 내 구독 상태
 me.get('/subscription', async (c) => {
   const user = c.get('user')!

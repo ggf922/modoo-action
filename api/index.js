@@ -9206,6 +9206,20 @@ function currentPeriodKST() {
   const label = `${m + 1}\uC6D4`;
   return { period, until, label };
 }
+function todayKST() {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1e3);
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+}
+function extendOneMonth(baseUntil) {
+  const today = todayKST();
+  const base = baseUntil && baseUntil >= today ? baseUntil : today;
+  const [y, m, d] = base.split("-").map(Number);
+  const targetMonthLast = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const nextMonthLast = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const day2 = Math.min(d, nextMonthLast);
+  const dt = new Date(Date.UTC(y, m, day2));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
 me.get("/subscription", async (c) => {
   const user = c.get("user");
   await ensureSubscriptionSchema(c.env.DB);
@@ -9824,6 +9838,17 @@ admin.post("/subscriptions/:userId/toggle", async (c) => {
   if (!u) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   await c.env.DB.prepare("UPDATE users SET subscriptionActive = ? WHERE id = ?").bind(active, userId).run();
   return c.json({ ok: true, active: !!active });
+});
+admin.post("/subscriptions/:userId/extend", async (c) => {
+  await ensureSubscriptionSchema(c.env.DB);
+  const userId = c.req.param("userId");
+  const u = await c.env.DB.prepare("SELECT id, subscriptionUntil FROM users WHERE id = ?").bind(userId).first();
+  if (!u) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  const newUntil = extendOneMonth(u.subscriptionUntil ?? null);
+  await c.env.DB.prepare(
+    "UPDATE users SET subscriptionActive = 1, subscriptionUntil = ? WHERE id = ?"
+  ).bind(newUntil, userId).run();
+  return c.json({ ok: true, until: newUntil });
 });
 admin.get("/config", async (c) => {
   const config = await c.env.DB.prepare("SELECT * FROM site_config LIMIT 1").first();

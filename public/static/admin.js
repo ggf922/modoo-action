@@ -745,7 +745,7 @@ async function pageAdminSubscriptions() {
       <span class="text-sm text-gray-400">활성 <b class="text-green-600">${activeCount}</b> · 비활성 <b class="text-gray-500">${subs.length - activeCount}</b></span>
     </div>
     <div class="bg-orange-50 rounded-2xl px-4 py-3 mb-4 text-xs text-gray-500">
-      <i class="fas fa-circle-info text-brand-orange"></i> 회원이 월 구독료(10,000P)를 납부하면 목록에 표시됩니다. 활성/비활성 버튼으로 각 회원의 구독 상태를 관리할 수 있습니다.
+      <i class="fas fa-circle-info text-brand-orange"></i> 회원이 월 구독료(10,000P)를 납부하면 목록에 표시됩니다. <b class="text-brand-orange">활성</b> 버튼을 누르면 구독 기간이 한 달 추가 연장되며, <b>비활성화</b>로 구독을 끌 수 있습니다.
     </div>
     <div class="space-y-2">
     ${subs.length ? subs.map(s => `
@@ -764,8 +764,10 @@ async function pageAdminSubscriptions() {
         </div>
         <div class="flex gap-2">
           ${s.subscriptionActive
-            ? `<button onclick="toggleSubscription('${s.id}', false)" class="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl text-sm font-medium">비활성화</button>`
-            : `<button onclick="toggleSubscription('${s.id}', true)" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">활성화</button>`}
+            ? `<button onclick="extendSubscription('${s.id}')" class="bg-brand-orange text-white px-4 py-2 rounded-xl text-sm font-bold"><i class="fas fa-crown"></i> 활성</button>
+               <button onclick="toggleSubscription('${s.id}', false)" class="bg-gray-100 text-gray-600 px-4 py-2 rounded-xl text-sm font-medium">비활성화</button>`
+            : `<button onclick="extendSubscription('${s.id}')" class="bg-brand-orange text-white px-4 py-2 rounded-xl text-sm font-bold"><i class="fas fa-crown"></i> 활성</button>
+               <button onclick="toggleSubscription('${s.id}', true)" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">활성화</button>`}
         </div>
       </div>`).join('') : '<p class="text-center text-gray-400 py-10">구독료를 납부한 회원이 없습니다.</p>'}
     </div>`)
@@ -780,6 +782,19 @@ async function toggleSubscription(userId, active) {
     pageAdminSubscriptions()
   } catch (err) { toast(errMsg(err), 'error') }
   finally { _subToggling.delete(userId) }
+}
+// 구독 한 달 추가 활성화(기간 연장)
+const _subExtending = new Set()
+async function extendSubscription(userId) {
+  if (_subExtending.has(userId)) return
+  if (!confirm('이 회원의 구독 기간을 한 달 추가 연장하시겠습니까?')) return
+  _subExtending.add(userId)
+  try {
+    const { data } = await api.post(`/admin/subscriptions/${userId}/extend`, {})
+    toast(`구독이 한 달 연장되었습니다. (만료일 ${data.until})`, 'success')
+    pageAdminSubscriptions()
+  } catch (err) { toast(errMsg(err), 'error') }
+  finally { _subExtending.delete(userId) }
 }
 
 // 배송 관리 (당첨 상품 배송)

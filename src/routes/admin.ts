@@ -6,7 +6,7 @@ import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
-import { ensureSubscriptionSchema } from './me'
+import { ensureSubscriptionSchema, extendOneMonth } from './me'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -623,6 +623,22 @@ admin.post('/subscriptions/:userId/toggle', async (c) => {
   await c.env.DB.prepare('UPDATE users SET subscriptionActive = ? WHERE id = ?')
     .bind(active, userId).run()
   return c.json({ ok: true, active: !!active })
+})
+
+// 회원 구독 한 달 추가 활성화(기간 연장)
+// 관리자가 "활성" 버튼을 누르면 구독 만료일을 현재 만료일(또는 오늘) 기준 한 달 연장하고 활성화한다.
+admin.post('/subscriptions/:userId/extend', async (c) => {
+  await ensureSubscriptionSchema(c.env.DB)
+  const userId = c.req.param('userId')
+  const u = await c.env.DB.prepare('SELECT id, subscriptionUntil FROM users WHERE id = ?')
+    .bind(userId).first<{ id: string; subscriptionUntil: string | null }>()
+  if (!u) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+
+  const newUntil = extendOneMonth(u.subscriptionUntil ?? null)
+  await c.env.DB.prepare(
+    'UPDATE users SET subscriptionActive = 1, subscriptionUntil = ? WHERE id = ?'
+  ).bind(newUntil, userId).run()
+  return c.json({ ok: true, until: newUntil })
 })
 
 // ===== 사이트 설정 =====
