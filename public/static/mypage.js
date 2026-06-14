@@ -176,7 +176,6 @@ async function pageMypage() {
     ${menuTile('#/mypage/bids', 'fa-gavel', '내 참여 내역')}
     ${menuTile('#/mypage/history', 'fa-clock-rotate-left', '포인트 내역')}
     ${menuTile('#/mypage/network', 'fa-sitemap', '내 조직도')}
-    ${menuTile('#/mypage/charge', 'fa-plus-circle', '포인트 충전')}
     ${menuTile('#/mypage/password', 'fa-key', '비밀번호 변경')}
   </div>`)
 }

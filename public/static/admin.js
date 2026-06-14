@@ -767,7 +767,7 @@ async function pageAdminSubscriptions() {
       <span class="text-sm text-gray-400">활성 <b class="text-green-600">${activeCount}</b> · 비활성 <b class="text-gray-500">${subs.length - activeCount}</b></span>
     </div>
     <div class="bg-orange-50 rounded-2xl px-4 py-3 mb-4 text-xs text-gray-500">
-      <i class="fas fa-circle-info text-brand-orange"></i> 회원이 월 구독료(10,000P)를 납부하면 목록에 표시됩니다. <b class="text-brand-orange">활성</b> 버튼을 누르면 구독 기간이 한 달 추가 연장되며, <b>비활성화</b>로 구독을 끌 수 있습니다.
+      <i class="fas fa-circle-info text-brand-orange"></i> 월 구독료(10,000P)를 납부했거나 <b class="text-brand-orange">VIP 이상 등급 + 활성</b> 회원이 자동으로 목록에 표시됩니다. <b class="text-brand-orange">활성</b> 버튼을 누르면 구독 기간이 한 달 추가 연장되며, <b>비활성화</b>로 구독을 끌 수 있습니다.
     </div>
     <div class="space-y-2">
     ${subs.length ? subs.map(s => `
@@ -797,7 +797,7 @@ async function pageAdminSubscriptions() {
             : `<button onclick="extendSubscription('${s.id}')" class="bg-brand-orange text-white px-4 py-2 rounded-xl text-sm font-bold"><i class="fas fa-crown"></i> 활성</button>
                <button onclick="toggleSubscription('${s.id}', true)" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">활성화</button>`}
         </div>
-      </div>`).join('') : '<p class="text-center text-gray-400 py-10">구독료를 납부한 회원이 없습니다.</p>'}
+      </div>`).join('') : '<p class="text-center text-gray-400 py-10">구독 대상 회원이 없습니다.</p>'}
     </div>`)
 }
 const _subToggling = new Set()

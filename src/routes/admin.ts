@@ -634,16 +634,19 @@ admin.post('/withdrawals/:id/process', async (c) => {
 })
 
 // ===== 구독 관리 =====
-// 구독 신청(납부)한 회원 목록 — 회원별 최근 납부 내역과 활성 상태
+// 구독 회원 목록 — 다음 중 하나라도 해당하면 자동으로 표시된다.
+//   ① 구독료 납부 이력이 있는 회원, 또는
+//   ② VIP 이상 등급 + 활성 회원 (납부 이력이 없어도 구독 대상이므로 자동 노출)
 admin.get('/subscriptions', async (c) => {
   await ensureSubscriptionSchema(c.env.DB)
+  await ensureMemberFlags(c.env.DB)
   const rows = (await c.env.DB.prepare(
     `SELECT u.id, u.name, u.nickname, u.email, u.grade,
             u.subscriptionActive, u.subscriptionUntil, u.auctionPoint,
-            sp_last.period AS lastPeriod, sp_last.paidAt AS lastPaidAt,
-            sp_cnt.cnt AS payCount
+            sp_last.period AS "lastPeriod", sp_last.paidAt AS "lastPaidAt",
+            sp_cnt.cnt AS "payCount"
      FROM users u
-     JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
+     LEFT JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
      LEFT JOIN (
        SELECT sp1.userId, sp1.period, sp1.paidAt FROM subscription_payments sp1
        JOIN (SELECT userId, MAX(paidAt) AS mx FROM subscription_payments GROUP BY userId) m
@@ -651,6 +654,11 @@ admin.get('/subscriptions', async (c) => {
      ) sp_last ON sp_last.userId = u.id
      LEFT JOIN (SELECT userId, COUNT(*) AS cnt FROM subscription_payments GROUP BY userId) sp_cnt
        ON sp_cnt.userId = u.id
+     WHERE u.role = 'MEMBER'
+       AND (
+         s.userId IS NOT NULL
+         OR (u.grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR') AND u.active = 1)
+       )
      ORDER BY u.subscriptionActive DESC, sp_last.paidAt DESC`
   ).all()).results
   return c.json({ subscriptions: rows })

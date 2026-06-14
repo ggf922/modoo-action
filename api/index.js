@@ -9948,13 +9948,14 @@ admin.post("/withdrawals/:id/process", async (c) => {
 });
 admin.get("/subscriptions", async (c) => {
   await ensureSubscriptionSchema(c.env.DB);
+  await ensureMemberFlags(c.env.DB);
   const rows = (await c.env.DB.prepare(
     `SELECT u.id, u.name, u.nickname, u.email, u.grade,
             u.subscriptionActive, u.subscriptionUntil, u.auctionPoint,
-            sp_last.period AS lastPeriod, sp_last.paidAt AS lastPaidAt,
-            sp_cnt.cnt AS payCount
+            sp_last.period AS "lastPeriod", sp_last.paidAt AS "lastPaidAt",
+            sp_cnt.cnt AS "payCount"
      FROM users u
-     JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
+     LEFT JOIN (SELECT DISTINCT userId FROM subscription_payments) s ON s.userId = u.id
      LEFT JOIN (
        SELECT sp1.userId, sp1.period, sp1.paidAt FROM subscription_payments sp1
        JOIN (SELECT userId, MAX(paidAt) AS mx FROM subscription_payments GROUP BY userId) m
@@ -9962,6 +9963,11 @@ admin.get("/subscriptions", async (c) => {
      ) sp_last ON sp_last.userId = u.id
      LEFT JOIN (SELECT userId, COUNT(*) AS cnt FROM subscription_payments GROUP BY userId) sp_cnt
        ON sp_cnt.userId = u.id
+     WHERE u.role = 'MEMBER'
+       AND (
+         s.userId IS NOT NULL
+         OR (u.grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR') AND u.active = 1)
+       )
      ORDER BY u.subscriptionActive DESC, sp_last.paidAt DESC`
   ).all()).results;
   return c.json({ subscriptions: rows });
