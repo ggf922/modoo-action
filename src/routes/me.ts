@@ -3,7 +3,7 @@ import type { Bindings, Variables, UserRow } from '../types'
 import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { ensureBidRound } from '../lib/draw'
-import { maybePayReferralReward } from '../lib/referral'
+import { maybePayReferralReward, ensureMemberFlags } from '../lib/referral'
 
 const me = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 me.use('*', requireAuth)
@@ -308,21 +308,22 @@ me.post('/subscription', async (c) => {
 // 조직도 (본인 산하만, 최대 5단계) — 상위(referrer) 절대 노출 금지
 me.get('/network', async (c) => {
   const user = c.get('user')!
+  await ensureMemberFlags(c.env.DB)
 
   // 본인 노드
   const root = await c.env.DB.prepare(
-    'SELECT id, name, nickname, grade, createdAt, referralCode FROM users WHERE id = ?'
+    'SELECT id, name, nickname, grade, active, createdAt, referralCode FROM users WHERE id = ?'
   ).bind(user.id).first()
 
   // BFS로 산하 5단계 수집
-  type Node = { id: string; name: string; nickname: string; grade: string; createdAt: string; referrerId: string; level: number }
+  type Node = { id: string; name: string; nickname: string; grade: string; active: number; createdAt: string; referrerId: string; level: number }
   const nodes: Node[] = []
   let currentLevel = [user.id]
   for (let depth = 1; depth <= 5; depth++) {
     if (currentLevel.length === 0) break
     const placeholders = currentLevel.map(() => '?').join(',')
     const children = (await c.env.DB.prepare(
-      `SELECT id, name, nickname, grade, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
+      `SELECT id, name, nickname, grade, active, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
     ).bind(...currentLevel).all<Node>()).results
     for (const ch of children) {
       nodes.push({ ...ch, level: depth })

@@ -229,6 +229,8 @@ const GRADE_INFO = {
 }
 const GRADE_ORDER = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
 function gradeInfo(g) { return GRADE_INFO[g] || GRADE_INFO.NORMAL }
+// VIP 이상 등급(일반회원 NORMAL 제외) 여부 — 조직도 활성/비활성 구분 표시 대상 판정
+function isVipOrAbove(g) { return ['VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR'].includes(String(g)) }
 // 등급별 색상(hex) — SVG 조직도 등에 사용
 function gradeColor(g) { return gradeInfo(g).color }
 // 등급 뱃지 (작은 라벨)

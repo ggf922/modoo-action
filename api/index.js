@@ -9380,8 +9380,9 @@ me.post("/subscription", async (c) => {
 });
 me.get("/network", async (c) => {
   const user = c.get("user");
+  await ensureMemberFlags(c.env.DB);
   const root = await c.env.DB.prepare(
-    "SELECT id, name, nickname, grade, createdAt, referralCode FROM users WHERE id = ?"
+    "SELECT id, name, nickname, grade, active, createdAt, referralCode FROM users WHERE id = ?"
   ).bind(user.id).first();
   const nodes = [];
   let currentLevel = [user.id];
@@ -9389,7 +9390,7 @@ me.get("/network", async (c) => {
     if (currentLevel.length === 0) break;
     const placeholders = currentLevel.map(() => "?").join(",");
     const children = (await c.env.DB.prepare(
-      `SELECT id, name, nickname, grade, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
+      `SELECT id, name, nickname, grade, active, createdAt, referrerId FROM users WHERE referrerId IN (${placeholders})`
     ).bind(...currentLevel).all()).results;
     for (const ch of children) {
       nodes.push({ ...ch, level: depth });
@@ -9819,8 +9820,9 @@ admin.delete("/members/:id", async (c) => {
 });
 admin.get("/network", async (c) => {
   const db = c.env.DB;
+  await ensureMemberFlags(db);
   const all = (await db.prepare(
-    `SELECT id, name, nickname, role, grade, referrerId, referralCode, createdAt,
+    `SELECT id, name, nickname, role, grade, active, referrerId, referralCode, createdAt,
             auctionPoint, wagePoint
      FROM users`
   ).all()).results;

@@ -35,15 +35,21 @@ async function pageNetwork() {
     const gi = gradeInfo(n.grade)
     const fill = isRoot ? '#FFC107' : gi.color
     const s = summary[n.id] || { bids: 0, wins: 0 }
+    // VIP 이상(일반회원 제외, 본인 제외)만 활성/비활성 상태 점 표시
+    const showStatus = !isRoot && isVipOrAbove(n.grade)
+    const statusDot = showStatus
+      ? `<circle cx="14" cy="14" r="5" fill="${Number(n.active) === 0 ? '#ef4444' : '#22c55e'}" stroke="white" stroke-width="1.5"/>`
+      : ''
     nodeEls += `<g transform="translate(${pos.x},${pos.y})" style="cursor:pointer"
                    onclick='showNodeDetail(${JSON.stringify({ ...n, ...s, isRoot }).replace(/'/g, "&#39;")})'>
       <rect width="${NODE_W}" height="${NODE_H}" rx="12" fill="white" stroke="${fill}" stroke-width="2.5"/>
       <rect width="6" height="${NODE_H}" rx="3" fill="${fill}"/>
       <rect x="${NODE_W - 52}" y="9" width="44" height="17" rx="8.5" fill="${fill}"/>
       <text x="${NODE_W - 30}" y="21" font-size="9.5" font-weight="700" fill="white" text-anchor="middle">${gi.label}</text>
-      <text x="16" y="24" font-size="14" font-weight="700" fill="#2D3748">${n.name}</text>
+      <text x="${showStatus ? 26 : 16}" y="24" font-size="14" font-weight="700" fill="#2D3748">${n.name}</text>
       <text x="16" y="42" font-size="11" fill="#718096">@${n.nickname}</text>
       <text x="16" y="57" font-size="10" fill="#a0aec0">${fmtDate(n.createdAt)} · 참여${s.bids}/당첨${s.wins}</text>
+      ${statusDot}
     </g>`
   })
 
@@ -58,6 +64,9 @@ async function pageNetwork() {
       <div class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-gray-500 mb-3">
         <span><span class="inline-block w-3 h-3 rounded align-middle" style="background:#FFC107"></span> 본인</span>
         ${GRADE_ORDER.map(g => `<span><span class="inline-block w-3 h-3 rounded align-middle" style="background:${gradeColor(g)}"></span> ${gradeInfo(g).label}</span>`).join('')}
+        <span class="text-gray-300">|</span>
+        <span><span class="inline-block w-2.5 h-2.5 rounded-full align-middle" style="background:#22c55e"></span> VIP↑ 활성</span>
+        <span><span class="inline-block w-2.5 h-2.5 rounded-full align-middle" style="background:#ef4444"></span> VIP↑ 비활성</span>
       </div>
       ${totalDownline === 0
         ? `<div class="text-center py-16 text-gray-400"><div class="text-4xl mb-3">🌱</div><p>아직 추천한 회원이 없어요.</p><p class="text-sm mt-1">추천코드 <b class="text-brand-orange">${root.referralCode}</b>를 공유해보세요!</p></div>`
@@ -81,6 +90,11 @@ function showNodeDetail(n) {
     </div>
     <div class="space-y-2 text-sm">
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">등급</span><span class="font-medium">${gradeInfo(n.grade).label}</span></div>
+      ${(!n.isRoot && isVipOrAbove(n.grade)) ? `<div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">상태</span>${
+        Number(n.active) === 0
+          ? '<span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600"><i class="fas fa-circle-xmark"></i> 비활성</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700"><i class="fas fa-circle-check"></i> 활성</span>'
+      }</div>` : ''}
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">가입일</span><span class="font-medium">${fmtDate(n.createdAt)}</span></div>
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매 참여</span><span class="font-medium">${n.bids}회</span></div>
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">낙찰</span><span class="font-medium text-brand-orange">${n.wins}회</span></div>

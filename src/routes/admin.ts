@@ -475,9 +475,10 @@ admin.delete('/members/:id', async (c) => {
 // 전체 조직도 (관리자 전용) — 관리자 루트 기준 전체 트리
 admin.get('/network', async (c) => {
   const db = c.env.DB
+  await ensureMemberFlags(db)
   // 전체 회원(관리자 포함)
   const all = (await db.prepare(
-    `SELECT id, name, nickname, role, grade, referrerId, referralCode, createdAt,
+    `SELECT id, name, nickname, role, grade, active, referrerId, referralCode, createdAt,
             auctionPoint, wagePoint
      FROM users`
   ).all<any>()).results
