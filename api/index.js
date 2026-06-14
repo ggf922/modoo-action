@@ -8343,6 +8343,7 @@ var QUOTED_COLUMNS = [
   "updatedAt",
   "subscriptionActive",
   "subscriptionUntil",
+  "referralRewardPaid",
   // subscription_payments
   "paidAt",
   // products
@@ -8751,15 +8752,11 @@ auth.post("/register", async (c) => {
       return c.json({ error: "\uC874\uC7AC\uD558\uC9C0 \uC54A\uB294 \uCD94\uCC9C\uCF54\uB4DC\uC785\uB2C8\uB2E4." }, 400);
     }
   }
-  let isCompanyReferral = false;
   if (!referrer) {
     referrer = await c.env.DB.prepare(
       "SELECT * FROM users WHERE role = 'ADMIN' ORDER BY createdAt ASC LIMIT 1"
     ).first();
-    isCompanyReferral = true;
   }
-  const config = await c.env.DB.prepare("SELECT referralBonus FROM site_config LIMIT 1").first();
-  const referralBonus = config?.referralBonus ?? 500;
   const hashed = await hashPassword(password);
   const userId = genId("u-");
   let newCode = genReferralCode();
@@ -8768,26 +8765,10 @@ auth.post("/register", async (c) => {
     if (!dup) break;
     newCode = genReferralCode();
   }
-  const stmts = [];
-  stmts.push(
-    c.env.DB.prepare(
-      `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode)
-  );
-  if (referrer) {
-    stmts.push(
-      c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(referralBonus, referrer.id)
-    );
-    const bonusDesc = isCompanyReferral ? `\uD68C\uC0AC \uCD94\uCC9C \uAC00\uC785 \uBCF4\uB108\uC2A4 (${nickname})` : `\uCD94\uCC9C \uAC00\uC785 \uBCF4\uB108\uC2A4 (${nickname})`;
-    stmts.push(
-      c.env.DB.prepare(
-        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'REFERRAL', 'AUCTION', ?, ?, datetime('now'))`
-      ).bind(genId("ph-"), referrer.id, referralBonus, bonusDesc)
-    );
-  }
-  await c.env.DB.batch(stmts);
+  await c.env.DB.prepare(
+    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode).run();
   console.log(`[EMAIL] \uAC00\uC785 \uD658\uC601 \uBA54\uC77C \uBC1C\uC1A1 \u2192 ${email}`);
   const sessionUser = { id: userId, email, name, nickname, role: "MEMBER" };
   const token = await createToken(sessionUser, c.env.JWT_SECRET);
@@ -8886,6 +8867,26 @@ async function ensureBidRound(DB) {
   await DB.prepare(`ALTER TABLE bids ADD COLUMN IF NOT EXISTS round INTEGER NOT NULL DEFAULT 0`).run();
   await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS roundNo INTEGER NOT NULL DEFAULT 0`).run();
   await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run();
+  const stale = (await DB.prepare(
+    `SELECT id FROM products WHERE status = 'DRAWN' AND roundNo = 0`
+  ).all()).results;
+  for (const sp of stale) {
+    const wins = (await DB.prepare(
+      `SELECT id, userId FROM winners WHERE productId = ? AND (bidId IS NULL OR bidId = '')`
+    ).bind(sp.id).all()).results;
+    for (const w of wins) {
+      const wb = await DB.prepare(
+        `SELECT id FROM bids WHERE productId = ? AND userId = ? AND isWinner = 1 AND round = 0 LIMIT 1`
+      ).bind(sp.id, w.userId).first();
+      if (wb?.id) {
+        await DB.prepare(`UPDATE winners SET bidId = ? WHERE id = ?`).bind(wb.id, w.id).run();
+      }
+    }
+    await DB.prepare(`UPDATE bids SET round = 1 WHERE productId = ? AND round = 0`).bind(sp.id).run();
+    await DB.prepare(
+      `UPDATE products SET status = 'OPEN', participantCount = 0, roundNo = 1 WHERE id = ?`
+    ).bind(sp.id).run();
+  }
   _bidRoundReady = true;
 }
 async function drawWinners(DB, product) {
@@ -9089,6 +9090,57 @@ products.post("/:id/join", requireAuth, async (c) => {
   });
 });
 var products_default = products;
+
+// src/lib/referral.ts
+var _memberFlagsReady = false;
+async function ensureMemberFlags(DB) {
+  if (_memberFlagsReady) return;
+  const col = await DB.prepare(
+    `SELECT 1 AS exists FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'referralrewardpaid' LIMIT 1`
+  ).first().catch(() => null);
+  const firstTime = !col;
+  await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1`).run();
+  await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS referralRewardPaid INTEGER NOT NULL DEFAULT 0`).run();
+  if (firstTime) {
+    await DB.prepare(
+      `UPDATE users SET referralRewardPaid = 1
+       WHERE grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR')`
+    ).run();
+  }
+  _memberFlagsReady = true;
+}
+var VIP_OR_ABOVE = ["VIP", "VVIP", "AGENCY", "DISTRIBUTOR", "DIRECTOR"];
+async function maybePayReferralReward(DB, memberId) {
+  await ensureMemberFlags(DB);
+  const m = await DB.prepare(
+    `SELECT id, nickname, grade, active, referralRewardPaid, referrerId FROM users WHERE id = ?`
+  ).bind(memberId).first();
+  if (!m) return false;
+  if (m.referralRewardPaid === 1) return false;
+  if (!VIP_OR_ABOVE.includes(String(m.grade))) return false;
+  if (Number(m.active) !== 1) return false;
+  if (!m.referrerId) return false;
+  const referrer = await DB.prepare(`SELECT id FROM users WHERE id = ?`).bind(m.referrerId).first();
+  if (!referrer) {
+    await DB.prepare(`UPDATE users SET referralRewardPaid = 1 WHERE id = ?`).bind(memberId).run();
+    return false;
+  }
+  const config = await DB.prepare(`SELECT referralBonus FROM site_config LIMIT 1`).first();
+  const referralBonus = config?.referralBonus ?? 500;
+  const flagSet = await DB.prepare(
+    `UPDATE users SET referralRewardPaid = 1 WHERE id = ? AND referralRewardPaid = 0`
+  ).bind(memberId).run();
+  const changed = flagSet?.meta?.changes ?? flagSet?.changes ?? 0;
+  if (changed === 0) return false;
+  await DB.batch([
+    DB.prepare(`UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?`).bind(referralBonus, referrer.id),
+    DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'REFERRAL', 'AUCTION', ?, ?, datetime('now'))`
+    ).bind(genId("ph-"), referrer.id, referralBonus, `\uCD94\uCC9C \uBCF4\uC0C1 (VIP \uC2B9\uAE09: ${m.nickname})`)
+  ]);
+  return true;
+}
 
 // src/routes/me.ts
 var me = new Hono2();
@@ -9323,6 +9375,7 @@ me.post("/subscription", async (c) => {
     }
     throw e;
   }
+  await maybePayReferralReward(c.env.DB, user.id);
   return c.json({ ok: true, period, label, fee: SUBSCRIPTION_FEE });
 });
 me.get("/network", async (c) => {
@@ -9571,9 +9624,10 @@ admin.patch("/products/:id/settings", async (c) => {
   return c.json({ ok: true, winnersCount, losingReward, maxParticipants });
 });
 admin.get("/members", async (c) => {
+  await ensureMemberFlags(c.env.DB);
   const q = c.req.query("q");
   let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.grade, u.auctionPoint, u.balancePoint, u.wagePoint,
-                    u.referralCode, u.referrerId, u.createdAt,
+                    u.referralCode, u.referrerId, u.active, u.createdAt,
                     r.nickname AS "referrerNickname"
              FROM users u LEFT JOIN users r ON r.id = u.referrerId`;
   const binds = [];
@@ -9612,7 +9666,20 @@ admin.post("/members/:id/grade", async (c) => {
   const target = await c.env.DB.prepare("SELECT id, role FROM users WHERE id = ?").bind(id).first();
   if (!target) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   await c.env.DB.prepare("UPDATE users SET grade = ?, updatedAt = datetime('now') WHERE id = ?").bind(grade, id).run();
-  return c.json({ ok: true, grade });
+  const referralPaid = await maybePayReferralReward(c.env.DB, id);
+  return c.json({ ok: true, grade, referralPaid });
+});
+admin.post("/members/:id/active", async (c) => {
+  await ensureMemberFlags(c.env.DB);
+  const id = c.req.param("id");
+  const b2 = await c.req.json().catch(() => null);
+  const active = b2?.active === 1 || b2?.active === true ? 1 : 0;
+  const target = await c.env.DB.prepare("SELECT id, role FROM users WHERE id = ?").bind(id).first();
+  if (!target) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (target.role === "ADMIN") return c.json({ error: "\uAD00\uB9AC\uC790 \uACC4\uC815\uC740 \uBE44\uD65C\uC131\uD654\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  await c.env.DB.prepare("UPDATE users SET active = ?, updatedAt = datetime('now') WHERE id = ?").bind(active, id).run();
+  const referralPaid = active === 1 ? await maybePayReferralReward(c.env.DB, id) : false;
+  return c.json({ ok: true, active, referralPaid });
 });
 admin.post("/members/grade-grant", async (c) => {
   const b2 = await c.req.json().catch(() => null);
@@ -9997,7 +10064,7 @@ function renderApp() {
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
-  {/* \uB2E4\uC74C(\uCE74\uCE74\uC624) \uC6B0\uD3B8\uBC88\uD638 \uC8FC\uC18C\uAC80\uC0C9 \uC11C\uBE44\uC2A4 \u2014 \uBB34\uB8CC, \uD0A4 \uBD88\uD544\uC694 */}
+  <!-- \uB2E4\uC74C(\uCE74\uCE74\uC624) \uC6B0\uD3B8\uBC88\uD638 \uC8FC\uC18C\uAC80\uC0C9 \uC11C\uBE44\uC2A4 - \uBB34\uB8CC, \uD0A4 \uBD88\uD544\uC694 -->
   <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
   <script>
     tailwind.config = {

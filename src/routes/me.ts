@@ -3,6 +3,7 @@ import type { Bindings, Variables, UserRow } from '../types'
 import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { ensureBidRound } from '../lib/draw'
+import { maybePayReferralReward } from '../lib/referral'
 
 const me = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 me.use('*', requireAuth)
@@ -297,6 +298,9 @@ me.post('/subscription', async (c) => {
     }
     throw e
   }
+
+  // 구독으로 활성 상태가 됐고 이미 VIP 이상이라면 추천 보상 1회 지급 (이미 지급됐으면 무시)
+  await maybePayReferralReward(c.env.DB, user.id)
 
   return c.json({ ok: true, period, label, fee: SUBSCRIPTION_FEE })
 })

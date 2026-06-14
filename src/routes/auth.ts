@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { setCookie, deleteCookie } from 'hono/cookie'
 import type { Bindings, Variables, UserRow } from '../types'
-import type { D1PreparedStatement } from '../lib/db'
 import { hashPassword, verifyPassword, createToken, genId, genReferralCode } from '../lib/auth'
 import { requireAuth } from '../lib/middleware'
 
@@ -41,17 +40,11 @@ auth.post('/register', async (c) => {
   }
 
   // 추천인이 없으면 회사(관리자)를 기본 추천인으로 자동 적용
-  let isCompanyReferral = false
   if (!referrer) {
     referrer = await c.env.DB.prepare(
       "SELECT * FROM users WHERE role = 'ADMIN' ORDER BY createdAt ASC LIMIT 1"
     ).first<UserRow>()
-    isCompanyReferral = true
   }
-
-  // 사이트 설정(추천 보너스)
-  const config = await c.env.DB.prepare('SELECT referralBonus FROM site_config LIMIT 1').first<{ referralBonus: number }>()
-  const referralBonus = config?.referralBonus ?? 500
 
   const hashed = await hashPassword(password)
   const userId = genId('u-')
@@ -64,32 +57,13 @@ auth.post('/register', async (c) => {
     newCode = genReferralCode()
   }
 
-  // 트랜잭션(batch)으로 처리: 신규 회원 생성 + 추천인 보너스 + 내역
-  const stmts: D1PreparedStatement[] = []
-
-  stmts.push(
-    c.env.DB.prepare(
-      `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode)
-  )
-
-  if (referrer) {
-    stmts.push(
-      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(referralBonus, referrer.id)
-    )
-    const bonusDesc = isCompanyReferral
-      ? `회사 추천 가입 보너스 (${nickname})`
-      : `추천 가입 보너스 (${nickname})`
-    stmts.push(
-      c.env.DB.prepare(
-        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'REFERRAL', 'AUCTION', ?, ?, datetime('now'))`
-      ).bind(genId('ph-'), referrer.id, referralBonus, bonusDesc)
-    )
-  }
-
-  await c.env.DB.batch(stmts)
+  // 신규 회원 생성 (추천 보상은 가입 즉시 지급하지 않는다)
+  //   ※ 추천 보상 정책: 피추천자가 "VIP 이상 + 활성"이 되는 최초 1회에만 추천인에게 지급한다.
+  //      (등급 변경 / 활성 토글 / 구독 활성화 시점에 maybePayReferralReward 가 처리)
+  await c.env.DB.prepare(
+    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode).run()
 
   // 이메일 발송은 콘솔 로그로 대체
   console.log(`[EMAIL] 가입 환영 메일 발송 → ${email}`)

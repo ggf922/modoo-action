@@ -382,7 +382,7 @@ async function pageAdminMembers(params, query) {
     <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
       <table class="w-full text-sm min-w-[640px]">
         <thead class="bg-gray-50 text-gray-500 text-xs"><tr>
-          <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">등급</th><th class="px-3 py-2">추천인</th>
+          <th class="text-left px-3 py-2">회원</th><th class="px-3 py-2">등급</th><th class="px-3 py-2">상태</th><th class="px-3 py-2">추천인</th>
           <th class="px-3 py-2">경매P</th><th class="px-3 py-2">관리</th>
         </tr></thead>
         <tbody class="divide-y divide-gray-50">
@@ -393,6 +393,11 @@ async function pageAdminMembers(params, query) {
             <select onchange="changeGradeInline('${m.id}', this.value)" class="text-xs border border-gray-200 rounded-lg px-1.5 py-1 outline-none focus:border-brand-orange bg-white">
               ${GRADE_ORDER.map(g => `<option value="${g}" ${g===m.grade?'selected':''}>${gradeInfo(g).label}</option>`).join('')}
             </select>`}</td>
+          <td class="px-3 py-2 text-center">${m.role==='ADMIN' ? '<span class="text-xs text-gray-300">-</span>' : (
+            Number(m.active) === 0
+              ? `<button onclick="toggleMemberActive('${m.id}', 1)" class="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full font-medium"><i class="fas fa-circle-xmark"></i> 비활성</button>`
+              : `<button onclick="toggleMemberActive('${m.id}', 0)" class="text-xs bg-green-50 text-green-600 px-2 py-1 rounded-full font-medium"><i class="fas fa-circle-check"></i> 활성</button>`
+          )}</td>
           <td class="px-3 py-2 text-center text-xs text-gray-500">${m.referrerNickname || '-'}</td>
           <td class="px-3 py-2 text-center font-medium text-brand-orange">${won(m.auctionPoint)}</td>
           <td class="px-3 py-2">
@@ -417,8 +422,21 @@ async function pageAdminMembers(params, query) {
 // 회원 목록에서 등급 인라인 변경
 async function changeGradeInline(userId, grade) {
   try {
-    await api.post('/admin/members/' + userId + '/grade', { grade })
-    toast(gradeInfo(grade).label + ' 등급으로 변경되었습니다.', 'success')
+    const { data } = await api.post('/admin/members/' + userId + '/grade', { grade })
+    if (data && data.referralPaid) toast(gradeInfo(grade).label + ' 등급으로 변경되어 추천 보상이 지급되었습니다.', 'success')
+    else toast(gradeInfo(grade).label + ' 등급으로 변경되었습니다.', 'success')
+  } catch (err) { toast(errMsg(err), 'error'); Router.resolve() }
+}
+
+// 회원 활성/비활성 토글
+async function toggleMemberActive(userId, next) {
+  const label = next === 1 ? '활성' : '비활성'
+  if (!confirm(`이 회원을 ${label} 상태로 변경하시겠습니까?`)) { Router.resolve(); return }
+  try {
+    const { data } = await api.post('/admin/members/' + userId + '/active', { active: next })
+    if (data && data.referralPaid) toast(`${label} 처리되어 추천 보상이 지급되었습니다.`, 'success')
+    else toast(`${label} 처리되었습니다.`, 'success')
+    Router.resolve()
   } catch (err) { toast(errMsg(err), 'error'); Router.resolve() }
 }
 

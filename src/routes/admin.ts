@@ -8,6 +8,7 @@ import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth } from './me'
 import { ensureProductUrlColumn } from './products'
+import { ensureMemberFlags, maybePayReferralReward } from '../lib/referral'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -225,9 +226,10 @@ admin.patch('/products/:id/settings', async (c) => {
 
 // ===== 회원 관리 =====
 admin.get('/members', async (c) => {
+  await ensureMemberFlags(c.env.DB)
   const q = c.req.query('q')
   let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.grade, u.auctionPoint, u.balancePoint, u.wagePoint,
-                    u.referralCode, u.referrerId, u.createdAt,
+                    u.referralCode, u.referrerId, u.active, u.createdAt,
                     r.nickname AS "referrerNickname"
              FROM users u LEFT JOIN users r ON r.id = u.referrerId`
   const binds: any[] = []
@@ -274,7 +276,30 @@ admin.post('/members/:id/grade', async (c) => {
   if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
 
   await c.env.DB.prepare("UPDATE users SET grade = ?, updatedAt = datetime('now') WHERE id = ?").bind(grade, id).run()
-  return c.json({ ok: true, grade })
+
+  // VIP 이상 + 활성이 되면 추천인에게 추천 보상 1회 지급 (이미 지급됐으면 무시)
+  const referralPaid = await maybePayReferralReward(c.env.DB, id)
+  return c.json({ ok: true, grade, referralPaid })
+})
+
+// 회원 활성/비활성 설정
+admin.post('/members/:id/active', async (c) => {
+  await ensureMemberFlags(c.env.DB)
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const active = b?.active === 1 || b?.active === true ? 1 : 0
+
+  const target = await c.env.DB.prepare('SELECT id, role FROM users WHERE id = ?')
+    .bind(id).first<{ id: string; role: string }>()
+  if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+  if (target.role === 'ADMIN') return c.json({ error: '관리자 계정은 비활성화할 수 없습니다.' }, 400)
+
+  await c.env.DB.prepare("UPDATE users SET active = ?, updatedAt = datetime('now') WHERE id = ?")
+    .bind(active, id).run()
+
+  // 활성으로 전환되면서 VIP 이상이면 추천 보상 1회 지급 (이미 지급됐으면 무시)
+  const referralPaid = active === 1 ? await maybePayReferralReward(c.env.DB, id) : false
+  return c.json({ ok: true, active, referralPaid })
 })
 
 // 등급별 포인트 일괄 지급

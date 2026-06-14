@@ -26,6 +26,37 @@ export async function ensureBidRound(DB: any) {
   await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS roundNo INTEGER NOT NULL DEFAULT 0`).run()
   // winners ↔ bids 1:1 연결 (반복 참여로 같은 회원이 같은 제품에 여러 번 당첨될 수 있으므로)
   await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run()
+
+  // ── 일회성 보정: 새 순환 로직 도입 이전에 이미 마감(DRAWN)된 기존 제품을 순환 가능 상태로 정규화 ──
+  //   배포 전 추첨된 제품은 status=DRAWN, roundNo=0, bids 가 모두 round=0 인 채로 굳어 있다.
+  //   → "당첨돼도 그 자리에서 계속 반복 참여" 요구에 맞춰 OPEN 으로 되돌리되,
+  //     과거 회차 bids/winners 는 1회차(round=1)로 정산 표시하고 participantCount 만 리셋한다.
+  //   roundNo=0 조건으로 한 번만 적용된다(이미 순환된 제품은 roundNo>=1).
+  const stale = (await DB.prepare(
+    `SELECT id FROM products WHERE status = 'DRAWN' AND roundNo = 0`
+  ).all<{ id: string }>()).results
+  for (const sp of stale) {
+    // 과거 당첨 bids 를 winners 와 연결(bidId 미설정 건만)
+    const wins = (await DB.prepare(
+      `SELECT id, userId FROM winners WHERE productId = ? AND (bidId IS NULL OR bidId = '')`
+    ).bind(sp.id).all<{ id: string; userId: string }>()).results
+    for (const w of wins) {
+      // 해당 회원의 당첨 bid(isWinner=1) 한 건을 찾아 연결
+      const wb = await DB.prepare(
+        `SELECT id FROM bids WHERE productId = ? AND userId = ? AND isWinner = 1 AND round = 0 LIMIT 1`
+      ).bind(sp.id, w.userId).first<{ id: string }>()
+      if (wb?.id) {
+        await DB.prepare(`UPDATE winners SET bidId = ? WHERE id = ?`).bind(wb.id, w.id).run()
+      }
+    }
+    // 과거 회차 bids 전부 1회차로 정산 표시
+    await DB.prepare(`UPDATE bids SET round = 1 WHERE productId = ? AND round = 0`).bind(sp.id).run()
+    // 제품을 순환 가능 OPEN 상태로 복구 (당첨 내역은 winners 에 그대로 보존)
+    await DB.prepare(
+      `UPDATE products SET status = 'OPEN', participantCount = 0, roundNo = 1 WHERE id = ?`
+    ).bind(sp.id).run()
+  }
+
   _bidRoundReady = true
 }
 

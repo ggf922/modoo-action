@@ -23,7 +23,7 @@ const QUOTED_COLUMNS = [
   // users
   'auctionPoint', 'balancePoint', 'wagePoint', 'referrerId', 'referralCode',
   'bankName', 'bankAccount', 'accountHolder', 'createdAt', 'updatedAt',
-  'subscriptionActive', 'subscriptionUntil',
+  'subscriptionActive', 'subscriptionUntil', 'referralRewardPaid',
   // subscription_payments
   'paidAt',
   // products
