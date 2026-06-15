@@ -20,9 +20,9 @@ async function pageHome() {
          class="inline-flex items-center justify-center gap-1.5 bg-white text-brand-orange font-bold px-3 py-2.5 rounded-xl text-sm shadow-md hover:bg-orange-50 transition whitespace-nowrap">
         <i class="fas fa-store"></i> 모두모두 쇼핑몰
       </a>
-      <a href="https://www.all-live.shop/pages/1770343374069" target="_blank" rel="noopener noreferrer"
+      <a href="https://www.all-live.shop" target="_blank" rel="noopener noreferrer"
          class="inline-flex items-center justify-center gap-1.5 bg-brand-dark text-white font-bold px-3 py-2.5 rounded-xl text-sm shadow-md hover:bg-black transition whitespace-nowrap">
-        <i class="fas fa-bag-shopping"></i> 브랜드 몰
+        <i class="fas fa-bag-shopping"></i> 국내/국외 쇼핑몰
       </a>
     </div>
     <div class="relative z-10 max-w-2xl">

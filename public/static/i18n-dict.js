@@ -17,7 +17,7 @@ I18N.dict = {
     '사업자등록번호 : 806-58-00641': 'Business License No.: 806-58-00641',
     '통신판매업신고번호 : 제 2024 경기시흥 1913호': 'E-commerce Reg. No.: 2024-Gyeonggi-Siheung-1913',
     // 홈/히어로
-    '낭만 Ai시리즈': 'Romance AI Series', '모두모두 쇼핑몰': 'ModooModoo Mall', '브랜드 몰': 'Brand Mall',
+    '낭만 Ai시리즈': 'Romance AI Series', '모두모두 쇼핑몰': 'ModooModoo Mall', '국내/국외 쇼핑몰': 'Domestic/Overseas Mall',
     '🌍 세계 최초 전원 수익형 경매': '🌍 World-first all-win auction',
     '낙찰자': 'Winner', '미낙찰자': 'Non-winner', '추천하면': 'Refer & earn',
     '초저가 자동구매': 'Auto-buy at low price', '보상 포인트 지급': 'Reward points', '포인트 적립': 'Earn points',
@@ -96,7 +96,7 @@ I18N.dict = {
     '← 홈으로 돌아가기': '← 返回首页', '목록으로': '返回列表',
     '세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!':
       '全球首创全员收益型团购拍卖商城 · 中标者低价购买，未中标者获得奖励积分！',
-    '큰바구니': '大篮子', '낭만 Ai시리즈': '浪漫AI系列', '모두모두 쇼핑몰': 'ModooModoo商城', '브랜드 몰': '品牌商城',
+    '큰바구니': '大篮子', '낭만 Ai시리즈': '浪漫AI系列', '모두모두 쇼핑몰': 'ModooModoo商城', '국내/국외 쇼핑몰': '国内/国外商城',
     '🌍 세계 최초 전원 수익형 경매': '🌍 全球首创全员收益拍卖',
     '낙찰자': '中标者', '미낙찰자': '未中标者', '추천하면': '推荐有奖',
     '초저가 자동구매': '超低价自动购买', '보상 포인트 지급': '奖励积分', '포인트 적립': '积分累积',
@@ -156,7 +156,7 @@ I18N.dict = {
     '← 홈으로 돌아가기': '← ホームへ戻る', '목록으로': '一覧へ',
     '세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!':
       '世界初の全員収益型共同購入オークションモール · 落札者は安く、未落札者は報酬ポイント！',
-    '큰바구니': 'クンバグニ', '낭만 Ai시리즈': 'ロマンAIシリーズ', '모두모두 쇼핑몰': 'モドゥモドゥモール', '브랜드 몰': 'ブランドモール',
+    '큰바구니': 'クンバグニ', '낭만 Ai시리즈': 'ロマンAIシリーズ', '모두모두 쇼핑몰': 'モドゥモドゥモール', '국내/국외 쇼핑몰': '国内/海外モール',
     '🌍 세계 최초 전원 수익형 경매': '🌍 世界初の全員収益オークション',
     '낙찰자': '落札者', '미낙찰자': '未落札者', '추천하면': '紹介で',
     '초저가 자동구매': '超低価格で自動購入', '보상 포인트 지급': '報酬ポイント', '포인트 적립': 'ポイント獲得',
@@ -217,7 +217,7 @@ I18N.dict = {
     '← 홈으로 돌아가기': '← العودة للرئيسية', '목록으로': 'إلى القائمة',
     '세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!':
       'أول سوق مزادات جماعية للجميع · الفائزون يشترون بسعر منخفض، وغير الفائزين يحصلون على نقاط مكافأة!',
-    '큰바구니': 'كون باغوني', '낭만 Ai시리즈': 'سلسلة AI الرومانسية', '모두모두 쇼핑몰': 'متجر مودومودو', '브랜드 몰': 'متجر العلامات',
+    '큰바구니': 'كون باغوني', '낭만 Ai시리즈': 'سلسلة AI الرومانسية', '모두모두 쇼핑몰': 'متجر مودومودو', '국내/국외 쇼핑몰': 'متجر محلي/دولي',
     '🌍 세계 최초 전원 수익형 경매': '🌍 أول مزاد ربحي للجميع',
     '낙찰자': 'الفائز', '미낙찰자': 'غير الفائز', '추천하면': 'بالإحالة',
     '초저가 자동구매': 'شراء تلقائي بسعر منخفض', '보상 포인트 지급': 'نقاط مكافأة', '포인트 적립': 'كسب النقاط',
@@ -278,7 +278,7 @@ I18N.dict = {
     '← 홈으로 돌아가기': '← Volver al inicio', '목록으로': 'A la lista',
     '세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!':
       '¡Primer centro de subastas de compra grupal para todos · los ganadores compran barato, los demás reciben puntos!',
-    '큰바구니': 'Keunbaguni', '낭만 Ai시리즈': 'Serie AI Romance', '모두모두 쇼핑몰': 'Tienda ModooModoo', '브랜드 몰': 'Tienda de marcas',
+    '큰바구니': 'Keunbaguni', '낭만 Ai시리즈': 'Serie AI Romance', '모두모두 쇼핑몰': 'Tienda ModooModoo', '국내/국외 쇼핑몰': 'Tienda Nacional/Internacional',
     '🌍 세계 최초 전원 수익형 경매': '🌍 Primera subasta para todos',
     '낙찰자': 'Ganador', '미낙찰자': 'No ganador', '추천하면': 'Refiere y gana',
     '초저가 자동구매': 'Compra auto a bajo precio', '보상 포인트 지급': 'Puntos de recompensa', '포인트 적립': 'Gana puntos',
@@ -339,7 +339,7 @@ I18N.dict = {
     '← 홈으로 돌아가기': '← Zur Startseite', '목록으로': 'Zur Liste',
     '세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!':
       'Weltweit erstes Gruppen-Auktionsportal · Gewinner kaufen günstig, andere erhalten Bonuspunkte!',
-    '큰바구니': 'Keunbaguni', '낭만 Ai시리즈': 'Romance AI Serie', '모두모두 쇼핑몰': 'ModooModoo Shop', '브랜드 몰': 'Marken-Shop',
+    '큰바구니': 'Keunbaguni', '낭만 Ai시리즈': 'Romance AI Serie', '모두모두 쇼핑몰': 'ModooModoo Shop', '국내/국외 쇼핑몰': 'Inland/Ausland Shop',
     '🌍 세계 최초 전원 수익형 경매': '🌍 Weltweit erste Allgewinn-Auktion',
     '낙찰자': 'Gewinner', '미낙찰자': 'Nicht-Gewinner', '추천하면': 'Empfehlen',
     '초저가 자동구매': 'Auto-Kauf günstig', '보상 포인트 지급': 'Bonuspunkte', '포인트 적립': 'Punkte sammeln',
