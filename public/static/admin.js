@@ -372,7 +372,7 @@ async function pageAdminMembers(params, query) {
       <a href="#/admin/network" class="bg-blue-600 text-white px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-sitemap"></i> 조직도 보기</a>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-4">
-      <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info text-brand-orange"></i> 아이디/이름/닉네임으로 검색 후 <b class="text-brand-orange">포인트발송</b> 버튼으로 개별 경매P를 보낼 수 있습니다. (회수 시 음수 입력)</p>
+      <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info text-brand-orange"></i> 아이디/이름/닉네임으로 검색 후 <b class="text-brand-orange">지급/회수</b> 버튼으로 경매P를 지급하거나, 잘못 충전·지급한 포인트를 <b class="text-red-500">회수(복구)</b>할 수 있습니다.</p>
       <form id="member-search" class="flex gap-2 w-full">
         <input name="q" value="${q}" placeholder="아이디 · 이름 · 닉네임으로 검색" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
         <button type="submit" class="bg-brand-orange text-white px-5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-search"></i> 검색</button>
@@ -403,7 +403,7 @@ async function pageAdminMembers(params, query) {
           <td class="px-3 py-2">
             <div class="flex gap-1 justify-center whitespace-nowrap">
               <button onclick="openMemberDetail('${m.id}')" class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-id-card"></i> 상세</button>
-              <button onclick="openAdjust('${m.id}','${m.nickname}')" class="text-xs bg-orange-50 text-brand-orange px-2 py-1 rounded-lg font-medium"><i class="fas fa-paper-plane"></i> 포인트발송</button>
+              <button onclick="openAdjust('${m.id}','${m.nickname}', ${Number(m.auctionPoint) || 0})" class="text-xs bg-orange-50 text-brand-orange px-2 py-1 rounded-lg font-medium"><i class="fas fa-coins"></i> 지급/회수</button>
               <button onclick="openMemberEdit('${m.id}')" class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-medium"><i class="fas fa-pen"></i></button>
               ${m.role==='ADMIN' ? '' : `<button onclick="deleteMember('${m.id}','${m.nickname}')" class="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-lg font-medium"><i class="fas fa-trash"></i></button>`}
             </div>
@@ -513,7 +513,7 @@ async function openMemberDetail(userId) {
 
     <div class="flex gap-2">
       <button onclick="closeModal();openMemberEdit('${m.id}')" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-pen"></i> 수정</button>
-      <button onclick="closeModal();openAdjust('${m.id}','${m.nickname}')" class="flex-1 bg-orange-50 text-brand-orange py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-coins"></i> 포인트 조정</button>
+      <button onclick="closeModal();openAdjust('${m.id}','${m.nickname}', ${Number(m.auctionPoint) || 0})" class="flex-1 bg-orange-50 text-brand-orange py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-coins"></i> 지급/회수</button>
       ${isAdmin ? '' : `<button onclick="closeModal();deleteMember('${m.id}','${m.nickname}')" class="flex-1 bg-red-50 text-red-500 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-trash"></i> 삭제</button>`}
     </div>
   </div>`)
@@ -571,30 +571,94 @@ async function deleteMember(userId, nickname) {
     toast('회원이 삭제되었습니다.', 'success'); pageAdminMembers({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
 }
-function openAdjust(userId, nickname) {
+function openAdjust(userId, nickname, currentPoint) {
+  const balance = Number(currentPoint) || 0
   openModal(`<div class="p-6">
-    <h3 class="font-extrabold text-lg mb-1"><i class="fas fa-paper-plane text-brand-orange"></i> 개별 포인트 발송</h3>
-    <p class="text-sm text-gray-400 mb-4">@${nickname} 회원에게 직접 포인트를 보냅니다.</p>
+    <h3 class="font-extrabold text-lg mb-1"><i class="fas fa-coins text-brand-orange"></i> 포인트 지급 / 회수</h3>
+    <p class="text-sm text-gray-400 mb-3">@${nickname} 회원의 경매포인트를 직접 지급하거나 회수(복구)합니다.</p>
+
+    <div class="bg-gray-50 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+      <span class="text-xs text-gray-500"><i class="fas fa-wallet text-brand-orange"></i> 현재 보유 경매P</span>
+      <b id="adj-balance" class="text-brand-dark">${won(balance)} P</b>
+    </div>
+
+    <!-- 지급 / 회수 모드 선택 -->
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <button type="button" id="adj-mode-give" onclick="setAdjustMode('give')" class="py-2.5 rounded-xl font-bold text-sm border-2 border-brand-orange bg-orange-50 text-brand-orange transition"><i class="fas fa-plus-circle"></i> 지급</button>
+      <button type="button" id="adj-mode-take" onclick="setAdjustMode('take')" class="py-2.5 rounded-xl font-bold text-sm border-2 border-gray-200 bg-white text-gray-500 transition"><i class="fas fa-rotate-left"></i> 회수(복구)</button>
+    </div>
+
     <div class="space-y-3">
-      <div class="bg-orange-50 rounded-xl px-4 py-2.5 text-xs text-gray-500"><i class="fas fa-coins text-brand-orange"></i> 경매포인트를 발송합니다. (회수 시 음수 입력)</div>
-      <div><label class="block text-xs font-medium text-gray-500 mb-1">금액 (P)</label>
-        <input id="adj-amount" type="number" placeholder="보낼 금액 (회수 시 음수, 예: -1000)" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none" /></div>
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">금액 (P) — 항상 양수로 입력</label>
+        <input id="adj-amount" type="number" min="1" oninput="updateAdjustPreview(${balance})" placeholder="예: 20000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
+      <div id="adj-preview" class="hidden text-sm rounded-xl px-4 py-2.5"></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">사유 (선택)</label>
-        <input id="adj-reason" placeholder="예: 이벤트 지급" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none" /></div>
+        <input id="adj-reason" placeholder="예: 충전 착오 정정 / 이벤트 지급" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" /></div>
     </div>
     <div class="flex gap-2 mt-5">
       <button onclick="closeModal()" class="flex-1 border border-gray-200 py-2.5 rounded-xl">취소</button>
-      <button onclick="doAdjust('${userId}')" class="flex-1 bg-brand-orange text-white py-2.5 rounded-xl font-bold"><i class="fas fa-paper-plane"></i> 발송하기</button>
+      <button id="adj-submit" onclick="doAdjust('${userId}', ${balance})" class="flex-1 bg-brand-orange text-white py-2.5 rounded-xl font-bold"><i class="fas fa-plus-circle"></i> 지급하기</button>
     </div>
   </div>`)
+  window._adjustMode = 'give'
 }
-async function doAdjust(userId) {
-  const amount = Number(document.getElementById('adj-amount').value)
+function setAdjustMode(mode) {
+  window._adjustMode = mode
+  const give = document.getElementById('adj-mode-give')
+  const take = document.getElementById('adj-mode-take')
+  const submit = document.getElementById('adj-submit')
+  const onCls = ['border-brand-orange', 'bg-orange-50', 'text-brand-orange']
+  const offCls = ['border-gray-200', 'bg-white', 'text-gray-500']
+  if (mode === 'give') {
+    give.classList.add(...onCls); give.classList.remove(...offCls)
+    take.classList.add(...offCls); take.classList.remove(...onCls)
+    submit.className = 'flex-1 bg-brand-orange text-white py-2.5 rounded-xl font-bold'
+    submit.innerHTML = '<i class="fas fa-plus-circle"></i> 지급하기'
+  } else {
+    take.classList.add('border-red-400', 'bg-red-50', 'text-red-500'); take.classList.remove(...offCls)
+    give.classList.add(...offCls); give.classList.remove(...onCls)
+    submit.className = 'flex-1 bg-red-500 text-white py-2.5 rounded-xl font-bold'
+    submit.innerHTML = '<i class="fas fa-rotate-left"></i> 회수하기'
+  }
+  const amtEl = document.getElementById('adj-amount')
+  updateAdjustPreview(Number(amtEl?.dataset.balance ?? 0) || window._adjustBalance || 0)
+}
+function updateAdjustPreview(balance) {
+  window._adjustBalance = balance
+  const amt = Math.abs(Number(document.getElementById('adj-amount').value) || 0)
+  const prev = document.getElementById('adj-preview')
+  if (!amt) { prev.classList.add('hidden'); return }
+  prev.classList.remove('hidden')
+  if (window._adjustMode === 'take') {
+    const after = balance - amt
+    if (after < 0) {
+      prev.className = 'text-sm rounded-xl px-4 py-2.5 bg-red-50 text-red-600'
+      prev.innerHTML = `<i class="fas fa-triangle-exclamation"></i> 보유 ${won(balance)}P 보다 많이 회수할 수 없습니다. (회수 후 음수 불가)`
+    } else {
+      prev.className = 'text-sm rounded-xl px-4 py-2.5 bg-red-50 text-red-600'
+      prev.innerHTML = `<i class="fas fa-rotate-left"></i> <b>${won(amt)}P</b> 회수 → 잔액 <b>${won(after)}P</b>`
+    }
+  } else {
+    prev.className = 'text-sm rounded-xl px-4 py-2.5 bg-orange-50 text-brand-orange'
+    prev.innerHTML = `<i class="fas fa-plus-circle"></i> <b>${won(amt)}P</b> 지급 → 잔액 <b>${won(balance + amt)}P</b>`
+  }
+}
+async function doAdjust(userId, balance) {
+  const raw = Math.abs(Number(document.getElementById('adj-amount').value) || 0)
   const reason = document.getElementById('adj-reason').value
-  if (!amount) { toast('금액을 입력해주세요.', 'warn'); return }
+  if (!raw) { toast('금액을 입력해주세요.', 'warn'); return }
+  const isTake = window._adjustMode === 'take'
+  const amount = isTake ? -raw : raw
+  if (isTake && (Number(balance) || 0) - raw < 0) {
+    toast('보유 포인트보다 많이 회수할 수 없습니다.', 'warn'); return
+  }
+  const finalReason = reason || (isTake ? '관리자 회수(복구)' : '관리자 지급')
+  if (!confirm(isTake
+    ? `@회원에게서 ${won(raw)}P 를 회수(복구)합니다. 진행할까요?`
+    : `@회원에게 ${won(raw)}P 를 지급합니다. 진행할까요?`)) return
   try {
-    await api.post(`/admin/members/${userId}/adjust`, { amount, reason })
-    closeModal(); toast('포인트가 조정되었습니다.', 'success'); pageAdminMembers({}, getQuery())
+    await api.post(`/admin/members/${userId}/adjust`, { amount, reason: finalReason })
+    closeModal(); toast(isTake ? `${won(raw)}P 회수 완료 ↩️` : `${won(raw)}P 지급 완료 ✅`, 'success'); pageAdminMembers({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
 }
 
