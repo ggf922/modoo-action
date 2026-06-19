@@ -8730,7 +8730,7 @@ var auth = new Hono2();
 auth.post("/register", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "\uC798\uBABB\uB41C \uC694\uCCAD\uC785\uB2C8\uB2E4." }, 400);
-  const { email, password, name, nickname, phone, referralCode } = body;
+  const { email, password, name, nickname, phone, referralCode, bankName, bankAccount, accountHolder } = body;
   if (!email || !password || !name || !nickname) {
     return c.json({ error: "\uD544\uC218 \uD56D\uBAA9\uC744 \uBAA8\uB450 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
   }
@@ -8765,10 +8765,13 @@ auth.post("/register", async (c) => {
     if (!dup) break;
     newCode = genReferralCode();
   }
+  const bankNameVal = bankName && String(bankName).trim() ? String(bankName).trim() : null;
+  const bankAccountVal = bankAccount && String(bankAccount).trim() ? String(bankAccount).trim() : null;
+  const accountHolderVal = accountHolder && String(accountHolder).trim() ? String(accountHolder).trim() : null;
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
-  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode).run();
+    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, bankName, bankAccount, accountHolder, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode, bankNameVal, bankAccountVal, accountHolderVal).run();
   console.log(`[EMAIL] \uAC00\uC785 \uD658\uC601 \uBA54\uC77C \uBC1C\uC1A1 \u2192 ${email}`);
   const sessionUser = { id: userId, email, name, nickname, role: "MEMBER" };
   const token = await createToken(sessionUser, c.env.JWT_SECRET);

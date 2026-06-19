@@ -122,6 +122,15 @@ async function pageRegister(params, query) {
           <input name="referralCode" value="${refFromUrl}" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none uppercase" placeholder="USER0001" />
           <p class="text-xs text-gray-400 mt-1">추천인에게 포인트 ${won(bonus)}P가 지급돼요 🎁</p></div>
 
+        <div class="border-t border-gray-100 pt-3 mt-1">
+          <div class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-building-columns text-brand-orange mr-1"></i> 출금 계좌 <span class="text-gray-400 font-normal text-xs">(선택 · 추후 등록·수정 가능)</span></div>
+          <p class="text-xs text-gray-400 mb-2">미당첨 보상·추천 수당 등 경매포인트 출금을 위한 본인 명의 계좌입니다. 가입 후 마이페이지 → 출금에서도 등록/수정할 수 있어요.</p>
+          <div class="grid grid-cols-3 gap-2">
+            <input name="bankName" placeholder="은행" class="px-3 py-3 rounded-xl border border-gray-200 text-sm focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" />
+            <input name="bankAccount" placeholder="계좌번호 (- 없이)" class="col-span-2 px-3 py-3 rounded-xl border border-gray-200 text-sm focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" />
+          </div>
+          <input name="accountHolder" placeholder="예금주 (회원 이름과 동일해야 출금 가능)" class="w-full mt-2 px-3 py-3 rounded-xl border border-gray-200 text-sm focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" /></div>
+
         <div class="bg-gray-50 rounded-xl p-3 mt-1">
           <label class="flex items-start gap-2 cursor-pointer">
             <input type="checkbox" name="privacyAgree" id="privacy-agree" class="mt-0.5 w-4 h-4 accent-brand-orange shrink-0" />
@@ -139,6 +148,16 @@ async function pageRegister(params, query) {
       </div>
     </div>
   </div>`)
+
+  // 예금주가 비어 있으면 이름 입력값으로 자동 채워 편의 제공 (직접 수정 가능)
+  const _regForm = document.getElementById('register-form')
+  const _nameEl = _regForm.querySelector('[name="name"]')
+  const _holderEl = _regForm.querySelector('[name="accountHolder"]')
+  if (_nameEl && _holderEl) {
+    _nameEl.addEventListener('blur', () => {
+      if (!_holderEl.value.trim() && _nameEl.value.trim()) _holderEl.value = _nameEl.value.trim()
+    })
+  }
 
   document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault()
