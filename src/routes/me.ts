@@ -124,16 +124,8 @@ me.post('/withdraw', async (c) => {
     return c.json({ error: `출금 가능 경매포인트가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
   }
 
-  // 계좌 정보 확인
-  if (!dbUser.bankName || !dbUser.bankAccount || !dbUser.accountHolder) {
-    return c.json({ error: '출금 계좌 정보(은행·계좌번호·예금주)를 먼저 등록해주세요.' }, 400)
-  }
-
-  // 회원 정보와 출금 정보 일치 검증: 예금주명이 회원 이름과 일치해야 함 (공백 제거 후 비교)
-  const norm = (s: string | null) => String(s ?? '').replace(/\s+/g, '')
-  if (norm(dbUser.accountHolder) !== norm(dbUser.name)) {
-    return c.json({ error: `출금 계좌의 예금주(${dbUser.accountHolder})가 회원 이름(${dbUser.name})과 일치하지 않습니다. 본인 명의 계좌로만 출금할 수 있습니다.` }, 400)
-  }
+  // 출금 계좌 등록 여부와 무관하게 출금 신청을 허용한다.
+  //   (계좌 정보는 관리자 처리 시 참고용이며, 미등록이어도 신청 가능)
 
   // PENDING 신청만 생성 (실제 차감은 관리자 승인 시)
   await c.env.DB.prepare(

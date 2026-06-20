@@ -11,7 +11,7 @@ auth.post('/register', async (c) => {
   const body = await c.req.json().catch(() => null)
   if (!body) return c.json({ error: '잘못된 요청입니다.' }, 400)
 
-  const { email, password, name, nickname, phone, referralCode, bankName, bankAccount, accountHolder } = body
+  const { email, password, name, nickname, phone, referralCode } = body
 
   if (!email || !password || !name || !nickname) {
     return c.json({ error: '필수 항목을 모두 입력해주세요.' }, 400)
@@ -60,15 +60,10 @@ auth.post('/register', async (c) => {
   // 신규 회원 생성 (추천 보상은 가입 즉시 지급하지 않는다)
   //   ※ 추천 보상 정책: 피추천자가 "VIP 이상 + 활성"이 되는 최초 1회에만 추천인에게 지급한다.
   //      (등급 변경 / 활성 토글 / 구독 활성화 시점에 maybePayReferralReward 가 처리)
-  // 출금 계좌 정보 (선택 입력) — 비우면 NULL 저장, 출금 페이지에서 추후 등록/수정 가능
-  const bankNameVal = bankName && String(bankName).trim() ? String(bankName).trim() : null
-  const bankAccountVal = bankAccount && String(bankAccount).trim() ? String(bankAccount).trim() : null
-  const accountHolderVal = accountHolder && String(accountHolder).trim() ? String(accountHolder).trim() : null
-
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, bankName, bankAccount, accountHolder, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode, bankNameVal, bankAccountVal, accountHolderVal).run()
+    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode).run()
 
   // 이메일 발송은 콘솔 로그로 대체
   console.log(`[EMAIL] 가입 환영 메일 발송 → ${email}`)

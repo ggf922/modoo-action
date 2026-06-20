@@ -8730,7 +8730,7 @@ var auth = new Hono2();
 auth.post("/register", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "\uC798\uBABB\uB41C \uC694\uCCAD\uC785\uB2C8\uB2E4." }, 400);
-  const { email, password, name, nickname, phone, referralCode, bankName, bankAccount, accountHolder } = body;
+  const { email, password, name, nickname, phone, referralCode } = body;
   if (!email || !password || !name || !nickname) {
     return c.json({ error: "\uD544\uC218 \uD56D\uBAA9\uC744 \uBAA8\uB450 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
   }
@@ -8765,13 +8765,10 @@ auth.post("/register", async (c) => {
     if (!dup) break;
     newCode = genReferralCode();
   }
-  const bankNameVal = bankName && String(bankName).trim() ? String(bankName).trim() : null;
-  const bankAccountVal = bankAccount && String(bankAccount).trim() ? String(bankAccount).trim() : null;
-  const accountHolderVal = accountHolder && String(accountHolder).trim() ? String(accountHolder).trim() : null;
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, bankName, bankAccount, accountHolder, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode, bankNameVal, bankAccountVal, accountHolderVal).run();
+    `INSERT INTO users (id, email, password, name, phone, nickname, role, auctionPoint, balancePoint, wagePoint, referrerId, referralCode, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'MEMBER', 0, 0, 0, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(userId, email, hashed, name, phone ?? null, nickname, referrer?.id ?? null, newCode).run();
   console.log(`[EMAIL] \uAC00\uC785 \uD658\uC601 \uBA54\uC77C \uBC1C\uC1A1 \u2192 ${email}`);
   const sessionUser = { id: userId, email, name, nickname, role: "MEMBER" };
   const token = await createToken(sessionUser, c.env.JWT_SECRET);
@@ -9242,13 +9239,6 @@ me.post("/withdraw", async (c) => {
   const withdrawable = dbUser.auctionPoint;
   if (amount > withdrawable) {
     return c.json({ error: `\uCD9C\uAE08 \uAC00\uB2A5 \uACBD\uB9E4\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uAC00\uB2A5: ${withdrawable.toLocaleString()}P)` }, 400);
-  }
-  if (!dbUser.bankName || !dbUser.bankAccount || !dbUser.accountHolder) {
-    return c.json({ error: "\uCD9C\uAE08 \uACC4\uC88C \uC815\uBCF4(\uC740\uD589\xB7\uACC4\uC88C\uBC88\uD638\xB7\uC608\uAE08\uC8FC)\uB97C \uBA3C\uC800 \uB4F1\uB85D\uD574\uC8FC\uC138\uC694." }, 400);
-  }
-  const norm = (s) => String(s ?? "").replace(/\s+/g, "");
-  if (norm(dbUser.accountHolder) !== norm(dbUser.name)) {
-    return c.json({ error: `\uCD9C\uAE08 \uACC4\uC88C\uC758 \uC608\uAE08\uC8FC(${dbUser.accountHolder})\uAC00 \uD68C\uC6D0 \uC774\uB984(${dbUser.name})\uACFC \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uBCF8\uC778 \uBA85\uC758 \uACC4\uC88C\uB85C\uB9CC \uCD9C\uAE08\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.` }, 400);
   }
   await c.env.DB.prepare(
     `INSERT INTO withdrawals (id, userId, amount, status, requestedAt)
