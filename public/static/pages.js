@@ -43,12 +43,12 @@ async function pageHome() {
       <h2 class="text-xl font-bold"><i class="fas fa-fire text-brand-orange"></i> 진행 중인 경매</h2>
       <span class="text-sm text-gray-400">${open.length}개</span>
     </div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 gap-y-5 pt-3 mb-10">${open.map((p, i) => renderProductCard(p, i < 4)).join('')}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 gap-y-5 pt-3 mb-10">${open.map((p, i) => renderProductCard(p, i < 4)).join('')}</div>
   ` : `<div class="text-center py-16 text-gray-400">진행 중인 경매가 없습니다.</div>`
 
   const drawnGrid = drawn.length ? `
     <h2 class="text-xl font-bold mb-4"><i class="fas fa-flag-checkered text-gray-400"></i> 마감된 경매</h2>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 opacity-80">${drawn.map(p => renderProductCard(p, false)).join('')}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 opacity-80">${drawn.map(p => renderProductCard(p, false)).join('')}</div>
   ` : ''
 
   appEl.innerHTML = layout(hero + openGrid + drawnGrid)
