@@ -56,7 +56,7 @@ async function pageHome() {
   <section id="free-check-banner" class="mt-12">
     <a href="https://www.pawtype16.com" target="_blank" rel="noopener noreferrer"
        class="block rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
-      <video src="/static/free-check-banner.mp4" class="w-full h-auto block"
+      <video src="/static/free-check-banner-v2.mp4" class="w-full h-auto block"
              autoplay muted loop playsinline
              poster="https://placehold.co/1200x400/FF6B35/fff?text=무료검사하기"></video>
     </a>
