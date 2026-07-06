@@ -51,7 +51,18 @@ async function pageHome() {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 opacity-80">${drawn.map(p => renderProductCard(p, false)).join('')}</div>
   ` : ''
 
-  appEl.innerHTML = layout(hero + openGrid + drawnGrid)
+  // 무료검사하기 배너 (첫 화면 푸터 바로 위) — 클릭 시 pawtype16 으로 이동
+  const videoBanner = `
+  <section id="free-check-banner" class="mt-12">
+    <a href="https://www.pawtype16.com" target="_blank" rel="noopener noreferrer"
+       class="block rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
+      <video src="/static/free-check-banner.mp4" class="w-full h-auto block"
+             autoplay muted loop playsinline
+             poster="https://placehold.co/1200x400/FF6B35/fff?text=무료검사하기"></video>
+    </a>
+  </section>`
+
+  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner)
 }
 
 // 로그인
