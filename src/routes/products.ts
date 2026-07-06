@@ -45,7 +45,16 @@ products.get('/', async (c) => {
     sql += ' ORDER BY p.sortOrder ASC, p.createdAt DESC'
     return (await c.env.DB.prepare(sql).bind(...binds).all()).results
   })
-  return c.json({ products: rows })
+  // 폐쇄몰/도매몰: 비로그인 사용자에게는 가격을 노출하지 않는다.
+  //   (네트워크 탭으로도 볼 수 없도록 응답에서 startPrice/marketPrice 제거)
+  const user = c.get('user')
+  const out = user
+    ? rows
+    : rows.map((r: any) => {
+        const { startPrice, marketPrice, ...rest } = r
+        return { ...rest, priceHidden: true }
+      })
+  return c.json({ products: out })
 })
 
 // 상품 상세 (참여자 목록 + 본인 참여여부)
@@ -80,7 +89,14 @@ products.get('/:id', async (c) => {
     }
   }
 
-  return c.json({ product, participants, winners, myBid, myBidCount })
+  // 폐쇄몰/도매몰: 비로그인 사용자에게는 가격을 노출하지 않는다.
+  let outProduct: any = product
+  if (!user) {
+    const { startPrice, marketPrice, ...rest } = product as any
+    outProduct = { ...rest, priceHidden: true }
+  }
+
+  return c.json({ product: outProduct, participants, winners, myBid, myBidCount })
 })
 
 // 경매 참여 (트랜잭션 + 정원 도달 시 자동 추첨)

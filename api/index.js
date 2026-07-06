@@ -9002,7 +9002,12 @@ products.get("/", async (c) => {
     sql += " ORDER BY p.sortOrder ASC, p.createdAt DESC";
     return (await c.env.DB.prepare(sql).bind(...binds).all()).results;
   });
-  return c.json({ products: rows });
+  const user = c.get("user");
+  const out = user ? rows : rows.map((r) => {
+    const { startPrice, marketPrice, ...rest } = r;
+    return { ...rest, priceHidden: true };
+  });
+  return c.json({ products: out });
 });
 products.get("/:id", async (c) => {
   const id = c.req.param("id");
@@ -9028,7 +9033,12 @@ products.get("/:id", async (c) => {
       myBid = await c.env.DB.prepare("SELECT * FROM bids WHERE userId = ? AND productId = ? AND round = 0 ORDER BY createdAt DESC").bind(user.id, id).first();
     }
   }
-  return c.json({ product, participants, winners, myBid, myBidCount });
+  let outProduct = product;
+  if (!user) {
+    const { startPrice, marketPrice, ...rest } = product;
+    outProduct = { ...rest, priceHidden: true };
+  }
+  return c.json({ product: outProduct, participants, winners, myBid, myBidCount });
 });
 products.post("/:id/join", requireAuth, async (c) => {
   const id = c.req.param("id");

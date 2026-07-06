@@ -238,9 +238,11 @@ async function pageProduct(params) {
   try { res = await api.get('/products/' + id) }
   catch { document.getElementById('app').innerHTML = renderNotFound(); return }
   const { product: p, participants, winners, myBid, myBidCount = 0 } = res.data
-  const discount = Math.round((1 - p.startPrice / p.marketPrice) * 100)
-  const isOpen = p.status === 'OPEN'
   const u = Store.user
+  // 폐쇄몰/도매몰: 비로그인 사용자에게는 가격을 숨긴다 (API 가 priceHidden 을 내려줌).
+  const priceHidden = !u || p.priceHidden
+  const discount = priceHidden ? 0 : Math.round((1 - p.startPrice / p.marketPrice) * 100)
+  const isOpen = p.status === 'OPEN'
   const remaining = Math.max(0, (p.maxParticipants || 0) - (participants.length || 0)) // 남은 정원
 
   const participantBadges = participants.length
@@ -249,7 +251,16 @@ async function pageProduct(params) {
     : '<span class="text-sm text-gray-400">아직 참여자가 없어요. 첫 참여자가 되어보세요!</span>'
 
   let actionBtn = ''
-  if (!isOpen) {
+  if (priceHidden) {
+    actionBtn = `<div class="bg-orange-50 border border-orange-200 rounded-xl p-5 text-center">
+      <p class="font-bold text-brand-orange mb-2"><i class="fas fa-lock"></i> 로그인 후 가격과 참여가 가능합니다</p>
+      <p class="text-sm text-gray-500 mb-4">회원 전용 폐쇄몰입니다. 로그인하시면 가격을 확인하고 경매에 참여하실 수 있어요.</p>
+      <div class="flex gap-2 justify-center">
+        <a href="#/auth/login" class="bg-brand-orange text-white font-bold px-6 py-3 rounded-xl hover:bg-orange-600 transition">로그인</a>
+        <a href="#/auth/register" class="bg-white border-2 border-brand-orange text-brand-orange font-bold px-6 py-3 rounded-xl hover:bg-orange-50 transition">회원가입</a>
+      </div>
+    </div>`
+  } else if (!isOpen) {
     const iWon = winners.find(w => u && w.userId === u.id)
     actionBtn = `<div class="bg-gray-100 rounded-xl p-4 text-center">
       <p class="font-bold text-gray-600 mb-1">🏁 추첨이 완료된 경매입니다</p>
@@ -275,12 +286,19 @@ async function pageProduct(params) {
     <div>
       <div class="relative rounded-2xl overflow-hidden bg-gray-100 aspect-square max-w-[800px] mx-auto">
         <img src="${p.imageUrl}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/800x800/FF6B35/fff?text=모두모두'" />
-        <span class="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow">${discount}% OFF</span>
+        ${priceHidden ? '' : `<span class="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow">${discount}% OFF</span>`}
       </div>
     </div>
     <div>
       <span class="text-sm text-gray-400">${p.category}</span>
       <h1 class="text-2xl font-extrabold mt-1 mb-3">${p.title}</h1>
+      ${priceHidden ? `
+      <div class="mb-4">
+        <span class="inline-flex items-center gap-2 text-brand-orange font-bold text-lg bg-orange-50 border border-orange-200 px-4 py-3 rounded-xl">
+          <i class="fas fa-lock"></i> 로그인 후 가격 확인
+        </span>
+      </div>
+      ` : `
       <div class="flex items-baseline gap-3 mb-1">
         <span class="text-gray-400 line-through-soft">시중가 ${won(p.marketPrice)}원</span>
       </div>
@@ -288,6 +306,7 @@ async function pageProduct(params) {
         <span class="text-gray-500 text-sm">낙찰가</span>
         <span class="text-brand-orange font-extrabold text-3xl">${won(p.startPrice)}원</span>
       </div>
+      `}
       <div class="grid grid-cols-2 gap-2 mb-4 text-center text-sm">
         <div class="bg-blue-50 rounded-xl py-3"><div class="text-gray-500 text-xs">당첨</div><div class="font-bold text-blue-600">${p.winnersCount}명</div></div>
         <div class="bg-green-50 rounded-xl py-3"><div class="text-gray-500 text-xs">미당첨 보상</div><div class="font-bold text-green-600">${won(p.losingReward)}P</div></div>

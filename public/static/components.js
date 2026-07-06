@@ -140,7 +140,9 @@ function renderMiniGauge(current, max) {
 
 // 상품 카드 (featured=true 이면 '추천 제품'으로 강하게 강조)
 function renderProductCard(p, featured) {
-  const discount = Math.round((1 - p.startPrice / p.marketPrice) * 100)
+  // 폐쇄몰/도매몰: 비로그인 사용자에게는 가격을 숨긴다 (API 가 priceHidden 을 내려줌).
+  const priceHidden = !Store.user || p.priceHidden
+  const discount = priceHidden ? 0 : Math.round((1 - p.startPrice / p.marketPrice) * 100)
   const isDrawn = p.status === 'DRAWN'
   // 추천 카드: 주황 링 + 강한 그림자 + 상단 추천 배지
   const featuredWrap = featured
@@ -152,13 +154,24 @@ function renderProductCard(p, featured) {
     <div class="relative aspect-square overflow-hidden bg-gray-100">
       <img src="${p.imageUrl}" alt="${p.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy"
            onerror="this.src='https://placehold.co/800x800/FF6B35/fff?text=모두모두'" />
-      <span class="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">${discount}% OFF</span>
+      ${priceHidden ? '' : `<span class="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">${discount}% OFF</span>`}
       ${isDrawn ? '<span class="absolute top-3 right-3 bg-brand-dark text-white text-xs font-bold px-2.5 py-1 rounded-full">추첨완료</span>'
                 : '<span class="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">진행중</span>'}
     </div>
     <div class="p-4">
       <span class="text-sm text-gray-400">${p.category}</span>
       <h3 class="font-bold text-lg mt-0.5 mb-2 line-clamp-1">${featured ? '<i class="fas fa-crown text-brand-orange mr-1"></i>' : ''}${p.title}</h3>
+      ${priceHidden ? `
+      <div class="mt-1 mb-1">
+        <span class="inline-flex items-center gap-1.5 text-brand-orange font-bold text-base bg-orange-50 border border-orange-200 px-3 py-2 rounded-xl">
+          <i class="fas fa-lock"></i> 로그인 후 가격 확인
+        </span>
+      </div>
+      ${renderMiniGauge(p.participants || 0, p.maxParticipants)}
+      <div class="mt-4 flex items-center justify-center">
+        <span class="text-base font-bold text-white bg-brand-dark px-10 py-3 rounded-xl group-hover:bg-black transition">로그인하고 참여</span>
+      </div>
+      ` : `
       <div class="flex items-baseline gap-2">
         <span class="text-gray-400 text-base line-through-soft">${won(p.marketPrice)}원</span>
       </div>
@@ -170,6 +183,7 @@ function renderProductCard(p, featured) {
       <div class="mt-4 flex items-center justify-center">
         <span class="text-base font-bold text-white bg-brand-orange px-10 py-3 rounded-xl group-hover:bg-orange-600 transition">참여하기</span>
       </div>
+      `}
     </div>
   </a>`
 }
