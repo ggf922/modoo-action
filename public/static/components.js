@@ -8,7 +8,7 @@ function renderHeader() {
   <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-100">
     <nav class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
       <a href="#/" class="flex items-center gap-1 text-xl font-extrabold text-brand-orange shrink-0">
-        모두모두 <span>🎁</span>
+        모두옥션 <span>🎁</span>
       </a>
       <div class="flex items-center gap-1 sm:gap-2 text-sm">
         ${renderLangSelector()}
