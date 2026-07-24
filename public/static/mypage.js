@@ -141,6 +141,9 @@ async function pageMypage() {
         <button onclick="copyReferralLink('${u.referralCode}')" class="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition">
           <i class="fas fa-link text-xs"></i> 추천 링크 복사
         </button>
+        <button onclick="openReferralQR('${u.referralCode}')" class="inline-flex items-center gap-1 text-sm font-semibold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-lg hover:bg-purple-100 transition">
+          <i class="fas fa-qrcode text-xs"></i> QR코드로 보내기
+        </button>
       </div>
     </div>
   </div>
@@ -215,6 +218,186 @@ function copyReferralLink(code) {
   const link = location.origin + '/#/auth/register?ref=' + code
   copyToClipboard(link)
   toast('추천 링크가 복사되었어요! 이 링크로 가입하면 추천코드가 자동 입력돼요 🔗', 'success')
+}
+
+// 추천 가입 링크 생성 (공통)
+function referralLinkOf(code) {
+  return location.origin + '/#/auth/register?ref=' + code
+}
+
+// ===== QR코드로 추천 링크 보내기 =====
+// QR코드 데이터URL(PNG) 저장용 전역
+let _referralQRDataUrl = ''
+
+function openReferralQR(code) {
+  const link = referralLinkOf(code)
+  openModal(`
+    <div class="p-6 sm:p-7 text-center">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-lg font-extrabold flex items-center gap-2"><i class="fas fa-qrcode text-purple-600"></i> QR코드로 추천하기</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">이 QR코드를 스캔하면 <b class="text-brand-orange">추천코드가 자동 입력된</b> 회원가입 화면으로 연결돼요.</p>
+
+      <div class="flex justify-center mb-3">
+        <div id="referral-qr" class="p-3 bg-white rounded-2xl border border-gray-100 shadow-sm inline-flex items-center justify-center min-h-[236px] min-w-[236px]">
+          <span class="text-sm text-gray-400"><i class="fas fa-spinner fa-spin"></i> 생성 중…</span>
+        </div>
+      </div>
+
+      <div class="text-xs text-gray-400 mb-4 break-all bg-gray-50 rounded-lg px-3 py-2">${link}</div>
+
+      <div class="grid grid-cols-2 gap-2 mb-2">
+        <button onclick="downloadReferralQR('${code}')" class="inline-flex items-center justify-center gap-1.5 bg-brand-dark text-white font-bold py-3 rounded-xl hover:bg-black transition text-sm">
+          <i class="fas fa-download"></i> 사진첩에 저장
+        </button>
+        <button onclick="shareReferral('${code}')" class="inline-flex items-center justify-center gap-1.5 bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition text-sm">
+          <i class="fas fa-paper-plane"></i> 공유하기
+        </button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-2 mt-3">
+        <button onclick="shareKakao('${code}')" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-[#FEE500] hover:brightness-95 transition">
+          <i class="fas fa-comment text-[#3C1E1E] text-lg"></i>
+          <span class="text-[11px] font-bold text-[#3C1E1E]">카카오톡</span>
+        </button>
+        <button onclick="shareInstagram('${code}')" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 hover:brightness-95 transition">
+          <i class="fab fa-instagram text-white text-lg"></i>
+          <span class="text-[11px] font-bold text-white">인스타</span>
+        </button>
+        <button onclick="shareFacebook('${code}')" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-[#1877F2] hover:brightness-95 transition">
+          <i class="fab fa-facebook-f text-white text-lg"></i>
+          <span class="text-[11px] font-bold text-white">페이스북</span>
+        </button>
+        <button onclick="shareSMS('${code}')" class="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-green-500 hover:brightness-95 transition">
+          <i class="fas fa-sms text-white text-lg"></i>
+          <span class="text-[11px] font-bold text-white">문자</span>
+        </button>
+      </div>
+      <p class="text-[11px] text-gray-400 mt-3 leading-snug">
+        <i class="fas fa-info-circle"></i> 인스타그램은 링크 직접 공유가 제한되어, 링크가 복사됩니다. 붙여넣어 스토리·DM·프로필에 올려주세요.
+      </p>
+    </div>
+  `, { maxWidth: 'max-w-sm' })
+
+  // QR 렌더링 (라이브러리 로드 확인 후)
+  setTimeout(() => renderReferralQR(link), 30)
+}
+
+function renderReferralQR(link) {
+  const box = document.getElementById('referral-qr')
+  if (!box) return
+  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
+    box.innerHTML = '<span class="text-sm text-red-500">QR 라이브러리를 불러오지 못했어요. 새로고침 후 다시 시도해주세요.</span>'
+    return
+  }
+  const canvas = document.createElement('canvas')
+  QRCode.toCanvas(canvas, link, { width: 210, margin: 1, color: { dark: '#2D3748', light: '#FFFFFF' } }, (err) => {
+    if (err) {
+      box.innerHTML = '<span class="text-sm text-red-500">QR 생성 실패</span>'
+      return
+    }
+    canvas.className = 'rounded-lg'
+    box.innerHTML = ''
+    box.appendChild(canvas)
+    // 다운로드/공유용 PNG 데이터URL 확보 (여백 넉넉히 320px)
+    QRCode.toDataURL(link, { width: 320, margin: 2, color: { dark: '#2D3748', light: '#FFFFFF' } }, (e2, url) => {
+      if (!e2) _referralQRDataUrl = url
+    })
+  })
+}
+
+// QR 이미지를 파일로 저장 (사진첩/다운로드)
+async function downloadReferralQR(code) {
+  const link = referralLinkOf(code)
+  const doDownload = (dataUrl) => {
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `modoo-auction-invite-${code}.png`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    toast('QR코드 이미지를 저장했어요! 사진첩/다운로드 폴더를 확인해주세요 📷', 'success')
+  }
+  if (_referralQRDataUrl) { doDownload(_referralQRDataUrl); return }
+  if (typeof QRCode !== 'undefined' && QRCode.toDataURL) {
+    QRCode.toDataURL(link, { width: 320, margin: 2, color: { dark: '#2D3748', light: '#FFFFFF' } }, (e, url) => {
+      if (e) { toast('QR 이미지를 만들지 못했어요.', 'error'); return }
+      _referralQRDataUrl = url
+      doDownload(url)
+    })
+  } else {
+    toast('QR 라이브러리를 불러오지 못했어요.', 'error')
+  }
+}
+
+// dataURL -> File 변환 (Web Share 이미지 공유용)
+function dataUrlToFile(dataUrl, filename) {
+  try {
+    const [head, body] = dataUrl.split(',')
+    const mime = (head.match(/:(.*?);/) || [])[1] || 'image/png'
+    const bin = atob(body)
+    const arr = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+    return new File([arr], filename, { type: mime })
+  } catch { return null }
+}
+
+// 통합 공유 (모바일: 네이티브 공유 시트 → 카톡/인스타/문자 등 모두 노출)
+async function shareReferral(code) {
+  const link = referralLinkOf(code)
+  const text = '모두옥션 회원가입 초대장이에요! 아래 링크로 가입하면 추천코드가 자동 입력돼요 🎁'
+  // 이미지(QR)까지 함께 공유 시도
+  const file = _referralQRDataUrl ? dataUrlToFile(_referralQRDataUrl, `modoo-auction-invite-${code}.png`) : null
+  if (navigator.share) {
+    try {
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: '모두옥션 초대', text: text + '\n' + link, files: [file] })
+      } else {
+        await navigator.share({ title: '모두옥션 초대', text, url: link })
+      }
+      return
+    } catch (e) {
+      if (e && e.name === 'AbortError') return // 사용자가 취소
+    }
+  }
+  // 데스크톱 등 공유 미지원 → 링크 복사 폴백
+  copyToClipboard(link)
+  toast('공유가 지원되지 않아 링크를 복사했어요. 원하는 곳에 붙여넣어 보내주세요 🔗', 'info')
+}
+
+// 카카오톡 공유 (카카오 SDK 미탑재 → 네이티브 공유/링크복사로 안내)
+async function shareKakao(code) {
+  const link = referralLinkOf(code)
+  const text = '모두옥션 회원가입 초대장이에요! 아래 링크로 가입하면 추천코드가 자동 입력돼요 🎁\n' + link
+  if (navigator.share) {
+    try { await navigator.share({ title: '모두옥션 초대', text }); return }
+    catch (e) { if (e && e.name === 'AbortError') return }
+  }
+  copyToClipboard(link)
+  toast('링크를 복사했어요! 카카오톡 대화창에 붙여넣어 보내주세요 💬', 'success')
+}
+
+// 인스타그램 (외부 링크 직접 공유 제한 → 링크 복사 안내)
+function shareInstagram(code) {
+  const link = referralLinkOf(code)
+  copyToClipboard(link)
+  toast('링크를 복사했어요! 인스타 스토리/DM/프로필에 붙여넣어 공유해주세요 📸', 'success')
+}
+
+// 페이스북 공유 (sharer)
+function shareFacebook(code) {
+  const link = referralLinkOf(code)
+  const url = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(link)
+  window.open(url, '_blank', 'noopener,noreferrer,width=600,height=600')
+}
+
+// 문자(SMS) 공유
+function shareSMS(code) {
+  const link = referralLinkOf(code)
+  const body = encodeURIComponent('모두옥션 회원가입 초대장이에요! 아래 링크로 가입하면 추천코드가 자동 입력돼요 🎁 ' + link)
+  // iOS/Android 호환: 본문 파라미터
+  window.location.href = 'sms:?&body=' + body
 }
 // 클립보드 복사 (구형 브라우저/비보안 컨텍스트 폴백 포함)
 function copyToClipboard(text) {
