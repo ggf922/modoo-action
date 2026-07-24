@@ -10075,8 +10075,8 @@ function renderApp() {
   <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
-  <!-- QR\uCF54\uB4DC \uC0DD\uC131 (\uCE94\uBC84\uC2A4 \uAE30\uBC18, \uB2E4\uC6B4\uB85C\uB4DC/\uACF5\uC720\uC6A9) -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- QR\uCF54\uB4DC \uC0DD\uC131 (\uC758\uC874\uC131 \uC5C6\uB294 \uC21C\uC218 JS, \uB2E4\uC6B4\uB85C\uB4DC/\uACF5\uC720\uC6A9) -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <!-- \uB2E4\uC74C(\uCE74\uCE74\uC624) \uC6B0\uD3B8\uBC88\uD638 \uC8FC\uC18C\uAC80\uC0C9 \uC11C\uBE44\uC2A4 - \uBB34\uB8CC, \uD0A4 \uBD88\uD544\uC694 -->
   <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
   <script>

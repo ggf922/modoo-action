@@ -284,51 +284,67 @@ function openReferralQR(code) {
   setTimeout(() => renderReferralQR(link), 30)
 }
 
+// qrcode-generator 로 QR 을 PNG 데이터URL(canvas) 로 생성
+//   - typeNumber 0 = 데이터 길이에 맞춰 자동, 'M' = 오류복원 15%
+//   - 흰 여백(quiet zone) 포함해 canvas 에 직접 그려 PNG 로 추출 → 다운로드/공유에 그대로 사용
+function makeReferralQRDataUrl(link, sizePx) {
+  const qr = qrcode(0, 'M')
+  qr.addData(link)
+  qr.make()
+  const count = qr.getModuleCount()
+  const quiet = 4 // 모듈 단위 여백
+  const total = count + quiet * 2
+  const scale = Math.max(2, Math.floor((sizePx || 320) / total))
+  const cvsSize = total * scale
+  const canvas = document.createElement('canvas')
+  canvas.width = cvsSize
+  canvas.height = cvsSize
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#FFFFFF'
+  ctx.fillRect(0, 0, cvsSize, cvsSize)
+  ctx.fillStyle = '#2D3748'
+  for (let r = 0; r < count; r++) {
+    for (let col = 0; col < count; col++) {
+      if (qr.isDark(r, col)) {
+        ctx.fillRect((col + quiet) * scale, (r + quiet) * scale, scale, scale)
+      }
+    }
+  }
+  return { dataUrl: canvas.toDataURL('image/png'), canvas }
+}
+
 function renderReferralQR(link) {
   const box = document.getElementById('referral-qr')
   if (!box) return
-  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
+  if (typeof qrcode === 'undefined') {
     box.innerHTML = '<span class="text-sm text-red-500">QR 라이브러리를 불러오지 못했어요. 새로고침 후 다시 시도해주세요.</span>'
     return
   }
-  const canvas = document.createElement('canvas')
-  QRCode.toCanvas(canvas, link, { width: 210, margin: 1, color: { dark: '#2D3748', light: '#FFFFFF' } }, (err) => {
-    if (err) {
-      box.innerHTML = '<span class="text-sm text-red-500">QR 생성 실패</span>'
-      return
-    }
-    canvas.className = 'rounded-lg'
-    box.innerHTML = ''
-    box.appendChild(canvas)
-    // 다운로드/공유용 PNG 데이터URL 확보 (여백 넉넉히 320px)
-    QRCode.toDataURL(link, { width: 320, margin: 2, color: { dark: '#2D3748', light: '#FFFFFF' } }, (e2, url) => {
-      if (!e2) _referralQRDataUrl = url
-    })
-  })
+  try {
+    const { dataUrl } = makeReferralQRDataUrl(link, 320)
+    _referralQRDataUrl = dataUrl
+    box.innerHTML = `<img src="${dataUrl}" alt="추천 QR코드" class="rounded-lg w-[210px] h-[210px]" />`
+  } catch (e) {
+    box.innerHTML = '<span class="text-sm text-red-500">QR 생성에 실패했어요.</span>'
+  }
 }
 
 // QR 이미지를 파일로 저장 (사진첩/다운로드)
 async function downloadReferralQR(code) {
   const link = referralLinkOf(code)
-  const doDownload = (dataUrl) => {
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = `modoo-auction-invite-${code}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    toast('QR코드 이미지를 저장했어요! 사진첩/다운로드 폴더를 확인해주세요 📷', 'success')
+  let dataUrl = _referralQRDataUrl
+  if (!dataUrl) {
+    if (typeof qrcode === 'undefined') { toast('QR 라이브러리를 불러오지 못했어요.', 'error'); return }
+    try { dataUrl = makeReferralQRDataUrl(link, 320).dataUrl; _referralQRDataUrl = dataUrl }
+    catch { toast('QR 이미지를 만들지 못했어요.', 'error'); return }
   }
-  if (_referralQRDataUrl) { doDownload(_referralQRDataUrl); return }
-  if (typeof QRCode !== 'undefined' && QRCode.toDataURL) {
-    QRCode.toDataURL(link, { width: 320, margin: 2, color: { dark: '#2D3748', light: '#FFFFFF' } }, (e, url) => {
-      if (e) { toast('QR 이미지를 만들지 못했어요.', 'error'); return }
-      _referralQRDataUrl = url
-      doDownload(url)
-    })
-  } else {
-    toast('QR 라이브러리를 불러오지 못했어요.', 'error')
-  }
+  const a = document.createElement('a')
+  a.href = dataUrl
+  a.download = `modoo-auction-invite-${code}.png`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  toast('QR코드 이미지를 저장했어요! 사진첩/다운로드 폴더를 확인해주세요 📷', 'success')
 }
 
 // dataURL -> File 변환 (Web Share 이미지 공유용)
@@ -347,7 +363,10 @@ function dataUrlToFile(dataUrl, filename) {
 async function shareReferral(code) {
   const link = referralLinkOf(code)
   const text = '모두옥션 회원가입 초대장이에요! 아래 링크로 가입하면 추천코드가 자동 입력돼요 🎁'
-  // 이미지(QR)까지 함께 공유 시도
+  // 이미지(QR)까지 함께 공유 시도 (아직 없으면 즉석 생성)
+  if (!_referralQRDataUrl && typeof qrcode !== 'undefined') {
+    try { _referralQRDataUrl = makeReferralQRDataUrl(link, 320).dataUrl } catch {}
+  }
   const file = _referralQRDataUrl ? dataUrlToFile(_referralQRDataUrl, `modoo-auction-invite-${code}.png`) : null
   if (navigator.share) {
     try {
