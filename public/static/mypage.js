@@ -475,9 +475,9 @@ async function pagePassword() {
 }
 
 // 입금 계좌 정보 (고정)
-const DEPOSIT_BANK = '케이뱅크'
-const DEPOSIT_ACCOUNT = '100-300-095256'
-const DEPOSIT_HOLDER = '큰바구니(임몽규)'
+const DEPOSIT_BANK = '기업은행'
+const DEPOSIT_ACCOUNT = '165 13365804 015'
+const DEPOSIT_HOLDER = '(주)모두모두닷컴'
 
 // 포인트 충전 (계좌 입금 후 관리자 승인 방식)
 async function pageCharge() {
@@ -506,7 +506,7 @@ async function pageCharge() {
           <div class="flex justify-between"><span class="text-gray-400">은행</span><span class="font-bold">${DEPOSIT_BANK}</span></div>
           <div class="flex justify-between items-center"><span class="text-gray-400">계좌번호</span>
             <span class="font-bold">${DEPOSIT_ACCOUNT}
-              <button onclick="copyToClipboard('${DEPOSIT_ACCOUNT.replace(/-/g,'')}');toast('계좌번호가 복사되었어요! 📋','success')" class="text-brand-orange ml-1"><i class="fas fa-copy text-xs"></i></button>
+              <button onclick="copyToClipboard('${DEPOSIT_ACCOUNT.replace(/[-\s]/g,'')}');toast('계좌번호가 복사되었어요! 📋','success')" class="text-brand-orange ml-1"><i class="fas fa-copy text-xs"></i></button>
             </span></div>
           <div class="flex justify-between"><span class="text-gray-400">예금주</span><span class="font-bold">${DEPOSIT_HOLDER}</span></div>
         </div>

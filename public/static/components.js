@@ -73,9 +73,10 @@ function renderFooter() {
       <div class="text-brand-orange font-bold text-base mb-1">모두옥션 🎁</div>
       <p>세계 최초 전원 수익형 공동 구매 경매 쇼핑몰 · 낙찰자는 저렴하게, 미낙찰자는 보상 포인트!</p>
       <div class="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 leading-relaxed">
-        <p class="font-semibold text-gray-500">큰바구니</p>
-        <p>주소 : 경기도 시흥시 역전로 304, 504호(정왕동)</p>
-        <p>사업자등록번호 : 806-58-00641</p>
+        <p class="font-semibold text-gray-500">(주)모두모두닷컴</p>
+        <p>등록번호 : 764-88-03661</p>
+        <p>대표자 : 이언경</p>
+        <p>주소 : 서울특별시 송파구 법원로 11길 25, 4층 제비-414호 (문정동, 에이치 비지니스파크)</p>
         <p>통신판매업신고번호 : 제 2024 경기시흥 1913호</p>
       </div>
       <p class="mt-4 text-xs">© 2026 ModooModoo Auction Mall. MVP Demo.</p>
