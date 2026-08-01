@@ -9817,6 +9817,8 @@ admin.delete("/members/:id", async (c) => {
     c.env.DB.prepare("DELETE FROM bids WHERE userId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM withdrawals WHERE userId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM point_history WHERE userId = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM charge_requests WHERE userId = ?").bind(id),
+    c.env.DB.prepare("DELETE FROM subscription_payments WHERE userId = ?").bind(id),
     c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id)
   ]);
   return c.json({ ok: true });

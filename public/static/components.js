@@ -77,7 +77,7 @@ function renderFooter() {
         <p>등록번호 : 764-88-03661</p>
         <p>대표자 : 이언경</p>
         <p>주소 : 서울특별시 송파구 법원로 11길 25, 4층 제비-414호 (문정동, 에이치 비지니스파크)</p>
-        <p>통신판매업신고번호 : 제 2024 경기시흥 1913호</p>
+        <p>통신판매 : 제 2026 - 서울 송파 - 2122호</p>
       </div>
       <p class="mt-4 text-xs">© 2026 ModooModoo Auction Mall. MVP Demo.</p>
     </div>
