@@ -9806,6 +9806,16 @@ admin.delete("/members/:id", async (c) => {
   const user = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
   if (!user) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   if (user.role === "ADMIN") return c.json({ error: "\uAD00\uB9AC\uC790 \uACC4\uC815\uC740 \uC0AD\uC81C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS subscription_payments (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      period TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PAID',
+      paidAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )`
+  ).run();
   await c.env.DB.batch([
     c.env.DB.prepare("UPDATE users SET referrerId = ? WHERE referrerId = ?").bind(user.referrerId ?? null, id),
     // 삭제 회원이 참여한 상품의 participantCount 를 -1 (정합성 유지). bids 삭제보다 먼저 실행.

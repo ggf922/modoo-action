@@ -455,6 +455,19 @@ admin.delete('/members/:id', async (c) => {
   if (!user) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
   if (user.role === 'ADMIN') return c.json({ error: '관리자 계정은 삭제할 수 없습니다.' }, 400)
 
+  // subscription_payments 테이블이 아직 생성되지 않은 환경(구독 기능 미사용)에서도
+  // 아래 DELETE 가 "relation does not exist" 로 트랜잭션 전체를 롤백시키지 않도록 보장.
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS subscription_payments (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      period TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PAID',
+      paidAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )`
+  ).run()
+
   // 하위 회원(직속)을 삭제 대상의 추천인에게 승계 (조직도 단절 방지)
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE users SET referrerId = ? WHERE referrerId = ?').bind(user.referrerId ?? null, id),
