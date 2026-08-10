@@ -386,35 +386,65 @@ admin.get('/members/vip-plus-count', async (c) => {
   return c.json({ count: row?.cnt ?? 0 })
 })
 
-// 지급 내역 보기 — 관리자가 지금까지 보낸 등급 일괄지급 / 월 구독료 수금 이력
-// point_history 의 ADMIN_ADJ 항목 중 일괄지급/구독료 항목을,
-// (설명 + 초 단위 시각) 기준으로 하나의 "배치"로 묶어 요약한다.
+// 지급 내역 보기 — 관리자가 지금까지 보낸 모든 포인트 지급/회수 이력
+//  · 등급별 일괄 지급  (description LIKE '등급 일괄지급%')   → 배치 단위 그룹핑
+//  · VIP 이상 월 구독료 수금 (description LIKE '월 구독료 차감%') → 배치 단위 그룹핑
+//  · 개별 회원 지급/회수    (그 외 ADMIN_ADJ, 예: '관리자 조정: ...') → 회원명과 함께 건별 표시
+// 대량 데이터 대비: 그룹핑 후 offset/limit 로 페이지네이션하여 반환한다.
 admin.get('/grant-history', async (c) => {
-  const rows = (await c.env.DB.prepare(
-    `SELECT id, userId, amount, description, createdAt
-     FROM point_history
-     WHERE type = 'ADMIN_ADJ'
-       AND (description LIKE '등급 일괄지급%' OR description LIKE '월 구독료 차감%')
-     ORDER BY createdAt DESC
-     LIMIT 3000`
-  ).all<{ id: string; userId: string; amount: number; description: string; createdAt: string }>()).results
+  const url = new URL(c.req.url)
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 20, 1), 100)
+  const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
 
-  // (설명, 초 단위 시각)으로 그룹핑 → 하나의 일괄 작업 = 한 배치
-  const groups = new Map<string, {
-    kind: 'GRANT' | 'SUBSCRIPTION'; description: string; createdAt: string;
-    count: number; totalAmount: number
-  }>()
-  for (const r of rows) {
-    const sec = String(r.createdAt).slice(0, 19)      // YYYY-MM-DD HH:MM:SS (초 단위)
-    const key = `${r.description}||${sec}`
-    const kind: 'GRANT' | 'SUBSCRIPTION' = r.description.startsWith('월 구독료') ? 'SUBSCRIPTION' : 'GRANT'
-    const g = groups.get(key)
-    if (g) { g.count++; g.totalAmount += Number(r.amount) }
-    else groups.set(key, { kind, description: r.description, createdAt: r.createdAt, count: 1, totalAmount: Number(r.amount) })
+  // ADMIN_ADJ(관리자 지급/회수) 전체를 회원명과 함께 최근순으로 조회.
+  // (일괄 배치는 같은 초에 다수 행이 생기므로, 그룹핑을 위해 상한을 넉넉히 둔다.)
+  const rows = (await c.env.DB.prepare(
+    `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+            u.name AS "userName", u.nickname AS "userNickname"
+     FROM point_history ph
+     LEFT JOIN users u ON u.id = ph.userId
+     WHERE ph.type = 'ADMIN_ADJ'
+     ORDER BY ph.createdAt DESC
+     LIMIT 20000`
+  ).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; userName: string; userNickname: string }>()).results
+
+  type Item = {
+    kind: 'GRANT' | 'SUBSCRIPTION' | 'INDIVIDUAL'
+    description: string; createdAt: string; count: number; totalAmount: number
+    userName?: string; userNickname?: string
   }
-  const history = Array.from(groups.values())
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-  return c.json({ history })
+  const batches = new Map<string, Item>()  // 일괄/구독료 배치 그룹
+  const items: Item[] = []                  // 최종 목록(개별 + 배치)
+
+  for (const r of rows) {
+    const amt = Number(r.amount)
+    const desc = String(r.description || '')
+    const isGrant = desc.startsWith('등급 일괄지급')
+    const isSub = desc.startsWith('월 구독료')
+    if (isGrant || isSub) {
+      // 같은 배치(설명+초 단위 시각)로 그룹핑
+      const sec = String(r.createdAt).slice(0, 19)
+      const key = `${desc}||${sec}`
+      const g = batches.get(key)
+      if (g) { g.count++; g.totalAmount += amt }
+      else {
+        const item: Item = { kind: isSub ? 'SUBSCRIPTION' : 'GRANT', description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt }
+        batches.set(key, item)
+        items.push(item)   // 배치의 첫 등장 위치(최근순)에 삽입 → 순서 유지
+      }
+    } else {
+      // 개별 회원 지급/회수 — 건별 표시(회원명 포함)
+      items.push({
+        kind: 'INDIVIDUAL', description: desc, createdAt: r.createdAt,
+        count: 1, totalAmount: amt, userName: r.userName, userNickname: r.userNickname,
+      })
+    }
+  }
+
+  // rows 가 이미 최근순이므로 items 도 최근순. 페이지 분할.
+  const total = items.length
+  const history = items.slice(offset, offset + limit)
+  return c.json({ history, total, limit, offset, hasMore: offset + limit < total })
 })
 
 // 단일 회원 상세 (수정 폼용)

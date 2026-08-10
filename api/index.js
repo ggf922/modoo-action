@@ -9752,27 +9752,52 @@ admin.get("/members/vip-plus-count", async (c) => {
   return c.json({ count: row?.cnt ?? 0 });
 });
 admin.get("/grant-history", async (c) => {
+  const url = new URL(c.req.url);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+  const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
   const rows = (await c.env.DB.prepare(
-    `SELECT id, userId, amount, description, createdAt
-     FROM point_history
-     WHERE type = 'ADMIN_ADJ'
-       AND (description LIKE '\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09%' OR description LIKE '\uC6D4 \uAD6C\uB3C5\uB8CC \uCC28\uAC10%')
-     ORDER BY createdAt DESC
-     LIMIT 3000`
+    `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+            u.name AS "userName", u.nickname AS "userNickname"
+     FROM point_history ph
+     LEFT JOIN users u ON u.id = ph.userId
+     WHERE ph.type = 'ADMIN_ADJ'
+     ORDER BY ph.createdAt DESC
+     LIMIT 20000`
   ).all()).results;
-  const groups = /* @__PURE__ */ new Map();
+  const batches = /* @__PURE__ */ new Map();
+  const items = [];
   for (const r of rows) {
-    const sec = String(r.createdAt).slice(0, 19);
-    const key = `${r.description}||${sec}`;
-    const kind = r.description.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC") ? "SUBSCRIPTION" : "GRANT";
-    const g = groups.get(key);
-    if (g) {
-      g.count++;
-      g.totalAmount += Number(r.amount);
-    } else groups.set(key, { kind, description: r.description, createdAt: r.createdAt, count: 1, totalAmount: Number(r.amount) });
+    const amt = Number(r.amount);
+    const desc = String(r.description || "");
+    const isGrant = desc.startsWith("\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09");
+    const isSub = desc.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC");
+    if (isGrant || isSub) {
+      const sec = String(r.createdAt).slice(0, 19);
+      const key = `${desc}||${sec}`;
+      const g = batches.get(key);
+      if (g) {
+        g.count++;
+        g.totalAmount += amt;
+      } else {
+        const item = { kind: isSub ? "SUBSCRIPTION" : "GRANT", description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt };
+        batches.set(key, item);
+        items.push(item);
+      }
+    } else {
+      items.push({
+        kind: "INDIVIDUAL",
+        description: desc,
+        createdAt: r.createdAt,
+        count: 1,
+        totalAmount: amt,
+        userName: r.userName,
+        userNickname: r.userNickname
+      });
+    }
   }
-  const history = Array.from(groups.values()).sort((a, b2) => a.createdAt < b2.createdAt ? 1 : -1);
-  return c.json({ history });
+  const total = items.length;
+  const history = items.slice(offset, offset + limit);
+  return c.json({ history, total, limit, offset, hasMore: offset + limit < total });
 });
 admin.get("/members/:id", async (c) => {
   const m = await c.env.DB.prepare(

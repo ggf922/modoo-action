@@ -753,40 +753,106 @@ async function doGrantVipAuction() {
   } catch (err) { toast(errMsg(err), 'error') }
 }
 
-// 지급 내역 보기 — 지금까지 보낸 등급 일괄지급 / 월 구독료 수금 이력
+// 지급 내역 보기 — 관리자가 보낸 모든 지급/회수 이력
+//  · 등급 일괄지급 / 월 구독료 수금(배치) + 개별 회원 지급·회수(건별)
+//  · 페이지네이션(더 보기)로 대량 데이터 대비
+const GRANT_HISTORY_PAGE = 20
+let _grantHistoryOffset = 0
+let _grantHistoryTotal = 0
+let _grantHistoryLoading = false
+
+// 내역 1건 → HTML 카드
+function renderGrantHistoryItem(h) {
+  const amt = Number(h.totalAmount)
+  const amountColor = amt < 0 ? 'text-red-500' : 'text-green-600'
+  const sign = amt < 0 ? '' : '+'
+  let badge, sub
+  if (h.kind === 'SUBSCRIPTION') {
+    badge = '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">구독료 수금</span>'
+    sub = `대상 ${won(h.count)}명 · 1인당 ${won(Math.round(Math.abs(amt) / (h.count || 1)))}P`
+  } else if (h.kind === 'GRANT') {
+    badge = '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">일괄 지급</span>'
+    sub = `대상 ${won(h.count)}명 · 1인당 ${won(Math.round(Math.abs(amt) / (h.count || 1)))}P`
+  } else {
+    // 개별 회원 지급/회수
+    badge = amt < 0
+      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-bold">개별 회수</span>'
+      : '<span class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold">개별 지급</span>'
+    const who = h.userName ? `${h.userName}${h.userNickname ? '(@' + h.userNickname + ')' : ''}` : '(삭제된 회원)'
+    sub = `대상 ${who}`
+  }
+  return `
+    <div class="bg-gray-50 rounded-xl p-3">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <div class="flex items-center gap-2">${badge}<span class="text-xs text-gray-400">${fmtDateTime(h.createdAt)}</span></div>
+        <div class="font-extrabold ${amountColor} whitespace-nowrap">${sign}${won(amt)}P</div>
+      </div>
+      <div class="text-sm text-gray-600">${h.description || '-'}</div>
+      <div class="text-xs text-gray-400 mt-0.5">${sub}</div>
+    </div>`
+}
+
 async function openGrantHistory() {
+  _grantHistoryOffset = 0
+  _grantHistoryTotal = 0
   openModal(`<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div>`, { maxWidth: 'max-w-2xl' })
-  let history = []
-  try { history = (await api.get('/admin/grant-history')).data.history || [] }
+  let data
+  try { data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=0`)).data }
   catch (err) { toast(errMsg(err), 'error'); closeModal(); return }
 
-  const rows = history.length ? history.map(h => {
-    const isSub = h.kind === 'SUBSCRIPTION'
-    const badge = isSub
-      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">구독료 수금</span>'
-      : '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">일괄 지급</span>'
-    const amountColor = Number(h.totalAmount) < 0 ? 'text-red-500' : 'text-green-600'
-    const sign = Number(h.totalAmount) < 0 ? '' : '+'
-    return `
-      <div class="bg-gray-50 rounded-xl p-3">
-        <div class="flex items-center justify-between gap-2 mb-1">
-          <div class="flex items-center gap-2">${badge}<span class="text-xs text-gray-400">${fmtDateTime(h.createdAt)}</span></div>
-          <div class="font-extrabold ${amountColor} whitespace-nowrap">${sign}${won(h.totalAmount)}P</div>
-        </div>
-        <div class="text-sm text-gray-600">${h.description}</div>
-        <div class="text-xs text-gray-400 mt-0.5">대상 ${won(h.count)}명 · 1인당 ${won(Math.round(Math.abs(Number(h.totalAmount)) / (h.count || 1)))}P</div>
-      </div>`
-  }).join('') : '<p class="text-center text-gray-400 py-10">아직 지급 내역이 없습니다.</p>'
+  const history = data.history || []
+  _grantHistoryTotal = data.total || history.length
+  _grantHistoryOffset = history.length
+
+  const listHtml = history.length
+    ? history.map(renderGrantHistoryItem).join('')
+    : '<p class="text-center text-gray-400 py-10">아직 지급 내역이 없습니다.</p>'
 
   openModal(`
     <div class="p-6">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 지급 내역 (${history.length})</h3>
+        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 지급 내역 (${won(_grantHistoryTotal)})</h3>
         <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
       </div>
-      <p class="text-xs text-gray-400 mb-3">등급별 일괄 지급 및 VIP 이상 월 구독료 수금 이력입니다. (최근순)</p>
-      <div class="space-y-2 max-h-[60vh] overflow-y-auto">${rows}</div>
+      <p class="text-xs text-gray-400 mb-3">등급 일괄 지급 · VIP 이상 월 구독료 수금 · 개별 회원 지급/회수 이력입니다. (최근순)</p>
+      <div id="grant-history-list" class="space-y-2 max-h-[60vh] overflow-y-auto">${listHtml}</div>
+      <div id="grant-history-more" class="mt-3"></div>
     </div>`, { maxWidth: 'max-w-2xl' })
+
+  updateGrantHistoryMore(data.hasMore)
+}
+
+// "더 보기" 버튼 갱신
+function updateGrantHistoryMore(hasMore) {
+  const el = document.getElementById('grant-history-more')
+  if (!el) return
+  if (hasMore) {
+    el.innerHTML = `<button onclick="loadMoreGrantHistory()" class="w-full py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50">
+      <i class="fas fa-angles-down"></i> 더 보기 (${won(_grantHistoryOffset)}/${won(_grantHistoryTotal)})</button>`
+  } else {
+    el.innerHTML = _grantHistoryTotal > 0
+      ? `<p class="text-center text-xs text-gray-300 py-1">모든 내역을 불러왔습니다 (${won(_grantHistoryTotal)}건)</p>`
+      : ''
+  }
+}
+
+async function loadMoreGrantHistory() {
+  if (_grantHistoryLoading) return
+  _grantHistoryLoading = true
+  const moreEl = document.getElementById('grant-history-more')
+  if (moreEl) moreEl.innerHTML = `<div class="text-center text-gray-400 py-2"><i class="fas fa-spinner fa-spin"></i></div>`
+  try {
+    const data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=${_grantHistoryOffset}`)).data
+    const history = data.history || []
+    _grantHistoryTotal = data.total || _grantHistoryTotal
+    _grantHistoryOffset += history.length
+    const listEl = document.getElementById('grant-history-list')
+    if (listEl) listEl.insertAdjacentHTML('beforeend', history.map(renderGrantHistoryItem).join(''))
+    updateGrantHistoryMore(data.hasMore)
+  } catch (err) {
+    toast(errMsg(err), 'error')
+    updateGrantHistoryMore(true)
+  } finally { _grantHistoryLoading = false }
 }
 
 // 출금 관리
