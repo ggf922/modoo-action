@@ -9755,15 +9755,32 @@ admin.get("/grant-history", async (c) => {
   const url = new URL(c.req.url);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
   const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+  const all = url.searchParams.get("all") === "1";
+  const fromRaw = (url.searchParams.get("from") || "").trim();
+  const toRaw = (url.searchParams.get("to") || "").trim();
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const from = dateRe.test(fromRaw) ? fromRaw : "";
+  const to = dateRe.test(toRaw) ? toRaw : "";
+  const conds = [`ph.type = 'ADMIN_ADJ'`];
+  const binds = [];
+  if (from) {
+    conds.push(`ph.createdAt >= ?`);
+    binds.push(`${from} 00:00:00`);
+  }
+  if (to) {
+    conds.push(`ph.createdAt <= ?`);
+    binds.push(`${to} 23:59:59.999`);
+  }
+  const whereSql = conds.join(" AND ");
   const rows = (await c.env.DB.prepare(
     `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
      LEFT JOIN users u ON u.id = ph.userId
-     WHERE ph.type = 'ADMIN_ADJ'
+     WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
      LIMIT 20000`
-  ).all()).results;
+  ).bind(...binds).all()).results;
   const batches = /* @__PURE__ */ new Map();
   const items = [];
   for (const r of rows) {
@@ -9796,8 +9813,11 @@ admin.get("/grant-history", async (c) => {
     }
   }
   const total = items.length;
+  if (all) {
+    return c.json({ history: items, total, from, to });
+  }
   const history = items.slice(offset, offset + limit);
-  return c.json({ history, total, limit, offset, hasMore: offset + limit < total });
+  return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to });
 });
 admin.get("/members/:id", async (c) => {
   const m = await c.env.DB.prepare(

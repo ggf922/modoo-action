@@ -395,6 +395,20 @@ admin.get('/grant-history', async (c) => {
   const url = new URL(c.req.url)
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 20, 1), 100)
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+  const all = url.searchParams.get('all') === '1'   // 전체 export 모드(페이지네이션 무시)
+  // 날짜 필터(YYYY-MM-DD). from은 그 날 00:00:00부터, to는 그 날 23:59:59까지 포함.
+  const fromRaw = (url.searchParams.get('from') || '').trim()
+  const toRaw = (url.searchParams.get('to') || '').trim()
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  const from = dateRe.test(fromRaw) ? fromRaw : ''
+  const to = dateRe.test(toRaw) ? toRaw : ''
+
+  // 날짜 조건 SQL 조립 (createdAt 은 TIMESTAMPTZ)
+  const conds: string[] = [`ph.type = 'ADMIN_ADJ'`]
+  const binds: string[] = []
+  if (from) { conds.push(`ph.createdAt >= ?`); binds.push(`${from} 00:00:00`) }
+  if (to) { conds.push(`ph.createdAt <= ?`); binds.push(`${to} 23:59:59.999`) }
+  const whereSql = conds.join(' AND ')
 
   // ADMIN_ADJ(관리자 지급/회수) 전체를 회원명과 함께 최근순으로 조회.
   // (일괄 배치는 같은 초에 다수 행이 생기므로, 그룹핑을 위해 상한을 넉넉히 둔다.)
@@ -403,10 +417,10 @@ admin.get('/grant-history', async (c) => {
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
      LEFT JOIN users u ON u.id = ph.userId
-     WHERE ph.type = 'ADMIN_ADJ'
+     WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
      LIMIT 20000`
-  ).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; userName: string; userNickname: string }>()).results
+  ).bind(...binds).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; userName: string; userNickname: string }>()).results
 
   type Item = {
     kind: 'GRANT' | 'SUBSCRIPTION' | 'INDIVIDUAL'
@@ -441,10 +455,15 @@ admin.get('/grant-history', async (c) => {
     }
   }
 
-  // rows 가 이미 최근순이므로 items 도 최근순. 페이지 분할.
+  // rows 가 이미 최근순이므로 items 도 최근순.
   const total = items.length
+  if (all) {
+    // 전체 export(다운로드용) — 페이지네이션 없이 필터된 전체 반환
+    return c.json({ history: items, total, from, to })
+  }
+  // 페이지 분할.
   const history = items.slice(offset, offset + limit)
-  return c.json({ history, total, limit, offset, hasMore: offset + limit < total })
+  return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to })
 })
 
 // 단일 회원 상세 (수정 폼용)

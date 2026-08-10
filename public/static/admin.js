@@ -760,6 +760,16 @@ const GRANT_HISTORY_PAGE = 20
 let _grantHistoryOffset = 0
 let _grantHistoryTotal = 0
 let _grantHistoryLoading = false
+let _grantHistoryFrom = ''   // YYYY-MM-DD (선택 시작일)
+let _grantHistoryTo = ''     // YYYY-MM-DD (선택 종료일)
+
+// 현재 선택된 날짜 필터를 쿼리스트링으로 (앞에 &from=..&to=.. 형태)
+function grantHistoryDateQS() {
+  let qs = ''
+  if (_grantHistoryFrom) qs += `&from=${encodeURIComponent(_grantHistoryFrom)}`
+  if (_grantHistoryTo) qs += `&to=${encodeURIComponent(_grantHistoryTo)}`
+  return qs
+}
 
 // 내역 1건 → HTML 카드
 function renderGrantHistoryItem(h) {
@@ -795,31 +805,143 @@ function renderGrantHistoryItem(h) {
 async function openGrantHistory() {
   _grantHistoryOffset = 0
   _grantHistoryTotal = 0
-  openModal(`<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div>`, { maxWidth: 'max-w-2xl' })
+  _grantHistoryFrom = ''
+  _grantHistoryTo = ''
+
+  // 모달 뼈대(날짜 선택 + 다운로드 UI 포함)를 먼저 그리고, 목록은 reloadGrantHistory 로 채운다.
+  openModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 지급 내역 <span id="grant-history-count"></span></h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">등급 일괄 지급 · VIP 이상 월 구독료 수금 · 개별 회원 지급/회수 이력입니다. (최근순)</p>
+
+      <div class="bg-gray-50 rounded-xl p-3 mb-3">
+        <div class="flex flex-wrap items-end gap-2">
+          <div class="flex flex-col">
+            <label class="text-xs text-gray-500 mb-1">시작일</label>
+            <input type="date" id="grant-history-from" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+          </div>
+          <div class="flex flex-col">
+            <label class="text-xs text-gray-500 mb-1">종료일</label>
+            <input type="date" id="grant-history-to" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+          </div>
+          <button onclick="applyGrantHistoryDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-magnifying-glass"></i> 조회</button>
+          <button onclick="clearGrantHistoryDate()" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100"><i class="fas fa-rotate-left"></i> 초기화</button>
+          <button onclick="downloadGrantHistory()" class="ml-auto px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-arrow-down"></i> CSV 다운로드</button>
+        </div>
+      </div>
+
+      <div id="grant-history-list" class="space-y-2 max-h-[52vh] overflow-y-auto"><div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div></div>
+      <div id="grant-history-more" class="mt-3"></div>
+    </div>`, { maxWidth: 'max-w-2xl' })
+
+  await reloadGrantHistory()
+}
+
+// 날짜 조회 버튼: input 값을 읽어 필터 적용 후 재조회
+async function applyGrantHistoryDate() {
+  const fromEl = document.getElementById('grant-history-from')
+  const toEl = document.getElementById('grant-history-to')
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  if (from && to && from > to) { toast('시작일이 종료일보다 늦습니다.', 'error'); return }
+  _grantHistoryFrom = from
+  _grantHistoryTo = to
+  await reloadGrantHistory()
+}
+
+// 날짜 초기화(전체 보기)
+async function clearGrantHistoryDate() {
+  _grantHistoryFrom = ''
+  _grantHistoryTo = ''
+  const fromEl = document.getElementById('grant-history-from')
+  const toEl = document.getElementById('grant-history-to')
+  if (fromEl) fromEl.value = ''
+  if (toEl) toEl.value = ''
+  await reloadGrantHistory()
+}
+
+// 현재 필터 기준 첫 페이지부터 목록 재조회
+async function reloadGrantHistory() {
+  _grantHistoryOffset = 0
+  _grantHistoryTotal = 0
+  const listEl = document.getElementById('grant-history-list')
+  if (listEl) listEl.innerHTML = `<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div>`
   let data
-  try { data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=0`)).data }
-  catch (err) { toast(errMsg(err), 'error'); closeModal(); return }
+  try { data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=0${grantHistoryDateQS()}`)).data }
+  catch (err) { toast(errMsg(err), 'error'); if (listEl) listEl.innerHTML = '<p class="text-center text-gray-400 py-10">불러오지 못했습니다.</p>'; return }
 
   const history = data.history || []
   _grantHistoryTotal = data.total || history.length
   _grantHistoryOffset = history.length
 
-  const listHtml = history.length
-    ? history.map(renderGrantHistoryItem).join('')
-    : '<p class="text-center text-gray-400 py-10">아직 지급 내역이 없습니다.</p>'
+  const cntEl = document.getElementById('grant-history-count')
+  if (cntEl) cntEl.textContent = `(${won(_grantHistoryTotal)})`
 
-  openModal(`
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 지급 내역 (${won(_grantHistoryTotal)})</h3>
-        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
-      </div>
-      <p class="text-xs text-gray-400 mb-3">등급 일괄 지급 · VIP 이상 월 구독료 수금 · 개별 회원 지급/회수 이력입니다. (최근순)</p>
-      <div id="grant-history-list" class="space-y-2 max-h-[60vh] overflow-y-auto">${listHtml}</div>
-      <div id="grant-history-more" class="mt-3"></div>
-    </div>`, { maxWidth: 'max-w-2xl' })
-
+  if (listEl) {
+    listEl.innerHTML = history.length
+      ? history.map(renderGrantHistoryItem).join('')
+      : `<p class="text-center text-gray-400 py-10">${(_grantHistoryFrom || _grantHistoryTo) ? '선택한 기간에 지급 내역이 없습니다.' : '아직 지급 내역이 없습니다.'}</p>`
+  }
   updateGrantHistoryMore(data.hasMore)
+}
+
+// 현재 필터 기준으로 전체 데이터를 받아 CSV(UTF-8 BOM)로 다운로드
+async function downloadGrantHistory() {
+  let data
+  try {
+    toast('다운로드 준비 중...', 'info')
+    data = (await api.get(`/admin/grant-history?all=1${grantHistoryDateQS()}`)).data
+  } catch (err) { toast(errMsg(err), 'error'); return }
+
+  const rows = data.history || []
+  if (!rows.length) { toast('다운로드할 내역이 없습니다.', 'error'); return }
+
+  const kindLabel = (h) => {
+    if (h.kind === 'SUBSCRIPTION') return '구독료 수금'
+    if (h.kind === 'GRANT') return '일괄 지급'
+    return Number(h.totalAmount) < 0 ? '개별 회수' : '개별 지급'
+  }
+  const csvCell = (v) => {
+    const s = (v === null || v === undefined) ? '' : String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+
+  const header = ['일시', '구분', '내용', '대상', '대상인원', '금액(P)']
+  const lines = [header.join(',')]
+  for (const h of rows) {
+    const isIndividual = h.kind === 'INDIVIDUAL'
+    const target = isIndividual
+      ? (h.userName ? `${h.userName}${h.userNickname ? '(@' + h.userNickname + ')' : ''}` : '(삭제된 회원)')
+      : ''
+    const people = isIndividual ? '' : String(h.count || '')
+    lines.push([
+      csvCell(fmtDateTime(h.createdAt)),
+      csvCell(kindLabel(h)),
+      csvCell(h.description || ''),
+      csvCell(target),
+      csvCell(people),
+      csvCell(Number(h.totalAmount)),
+    ].join(','))
+  }
+
+  const bom = '\uFEFF'
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const range = (_grantHistoryFrom || _grantHistoryTo)
+    ? `_${_grantHistoryFrom || '처음'}_${_grantHistoryTo || '오늘'}`
+    : '_전체'
+  const fname = `지급내역${range}.csv`
+
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = fname
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  toast(`${won(rows.length)}건 다운로드 완료`, 'success')
 }
 
 // "더 보기" 버튼 갱신
@@ -842,7 +964,7 @@ async function loadMoreGrantHistory() {
   const moreEl = document.getElementById('grant-history-more')
   if (moreEl) moreEl.innerHTML = `<div class="text-center text-gray-400 py-2"><i class="fas fa-spinner fa-spin"></i></div>`
   try {
-    const data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=${_grantHistoryOffset}`)).data
+    const data = (await api.get(`/admin/grant-history?limit=${GRANT_HISTORY_PAGE}&offset=${_grantHistoryOffset}${grantHistoryDateQS()}`)).data
     const history = data.history || []
     _grantHistoryTotal = data.total || _grantHistoryTotal
     _grantHistoryOffset += history.length
