@@ -386,6 +386,37 @@ admin.get('/members/vip-plus-count', async (c) => {
   return c.json({ count: row?.cnt ?? 0 })
 })
 
+// 지급 내역 보기 — 관리자가 지금까지 보낸 등급 일괄지급 / 월 구독료 수금 이력
+// point_history 의 ADMIN_ADJ 항목 중 일괄지급/구독료 항목을,
+// (설명 + 초 단위 시각) 기준으로 하나의 "배치"로 묶어 요약한다.
+admin.get('/grant-history', async (c) => {
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, userId, amount, description, createdAt
+     FROM point_history
+     WHERE type = 'ADMIN_ADJ'
+       AND (description LIKE '등급 일괄지급%' OR description LIKE '월 구독료 차감%')
+     ORDER BY createdAt DESC
+     LIMIT 3000`
+  ).all<{ id: string; userId: string; amount: number; description: string; createdAt: string }>()).results
+
+  // (설명, 초 단위 시각)으로 그룹핑 → 하나의 일괄 작업 = 한 배치
+  const groups = new Map<string, {
+    kind: 'GRANT' | 'SUBSCRIPTION'; description: string; createdAt: string;
+    count: number; totalAmount: number
+  }>()
+  for (const r of rows) {
+    const sec = String(r.createdAt).slice(0, 19)      // YYYY-MM-DD HH:MM:SS (초 단위)
+    const key = `${r.description}||${sec}`
+    const kind: 'GRANT' | 'SUBSCRIPTION' = r.description.startsWith('월 구독료') ? 'SUBSCRIPTION' : 'GRANT'
+    const g = groups.get(key)
+    if (g) { g.count++; g.totalAmount += Number(r.amount) }
+    else groups.set(key, { kind, description: r.description, createdAt: r.createdAt, count: 1, totalAmount: Number(r.amount) })
+  }
+  const history = Array.from(groups.values())
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  return c.json({ history })
+})
+
 // 단일 회원 상세 (수정 폼용)
 admin.get('/members/:id', async (c) => {
   const m = await c.env.DB.prepare(

@@ -673,7 +673,10 @@ async function pageAdminGradeGrant() {
   } catch (err) { toast(errMsg(err), 'error') }
 
   document.getElementById('app').innerHTML = adminLayout('/admin/grade-grant', `
-    <h2 class="font-bold mb-4"><i class="fas fa-layer-group text-brand-orange"></i> 등급별 포인트 일괄 지급</h2>
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="font-bold"><i class="fas fa-layer-group text-brand-orange"></i> 등급별 포인트 일괄 지급</h2>
+      <button onclick="openGrantHistory()" class="bg-white border border-brand-orange text-brand-orange px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-orange-50"><i class="fas fa-clock-rotate-left"></i> 지급내역 보기</button>
+    </div>
 
     <div class="bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl p-5 mb-4">
       <div class="flex items-center justify-between mb-2">
@@ -750,6 +753,42 @@ async function doGrantVipAuction() {
   } catch (err) { toast(errMsg(err), 'error') }
 }
 
+// 지급 내역 보기 — 지금까지 보낸 등급 일괄지급 / 월 구독료 수금 이력
+async function openGrantHistory() {
+  openModal(`<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div>`, { maxWidth: 'max-w-2xl' })
+  let history = []
+  try { history = (await api.get('/admin/grant-history')).data.history || [] }
+  catch (err) { toast(errMsg(err), 'error'); closeModal(); return }
+
+  const rows = history.length ? history.map(h => {
+    const isSub = h.kind === 'SUBSCRIPTION'
+    const badge = isSub
+      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">구독료 수금</span>'
+      : '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">일괄 지급</span>'
+    const amountColor = Number(h.totalAmount) < 0 ? 'text-red-500' : 'text-green-600'
+    const sign = Number(h.totalAmount) < 0 ? '' : '+'
+    return `
+      <div class="bg-gray-50 rounded-xl p-3">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="flex items-center gap-2">${badge}<span class="text-xs text-gray-400">${fmtDateTime(h.createdAt)}</span></div>
+          <div class="font-extrabold ${amountColor} whitespace-nowrap">${sign}${won(h.totalAmount)}P</div>
+        </div>
+        <div class="text-sm text-gray-600">${h.description}</div>
+        <div class="text-xs text-gray-400 mt-0.5">대상 ${won(h.count)}명 · 1인당 ${won(Math.round(Math.abs(Number(h.totalAmount)) / (h.count || 1)))}P</div>
+      </div>`
+  }).join('') : '<p class="text-center text-gray-400 py-10">아직 지급 내역이 없습니다.</p>'
+
+  openModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 지급 내역 (${history.length})</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">등급별 일괄 지급 및 VIP 이상 월 구독료 수금 이력입니다. (최근순)</p>
+      <div class="space-y-2 max-h-[60vh] overflow-y-auto">${rows}</div>
+    </div>`, { maxWidth: 'max-w-2xl' })
+}
+
 // 출금 관리
 async function pageAdminWithdrawals() {
   if (!adminGuard()) return
@@ -792,7 +831,10 @@ async function pageAdminCharges() {
     const [t, cls] = map[s] || [s,'bg-gray-100']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
   }
   document.getElementById('app').innerHTML = adminLayout('/admin/charges', `
-    <h2 class="font-bold mb-4">충전 요청 관리 (${data.charges.length})</h2>
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="font-bold">충전 요청 관리 (${data.charges.length})</h2>
+      <button onclick="openChargeHistory()" class="bg-white border border-brand-orange text-brand-orange px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-orange-50"><i class="fas fa-clock-rotate-left"></i> 충전내역 보기</button>
+    </div>
     <div class="space-y-2">
     ${data.charges.length ? data.charges.map(r => `
       <div class="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap items-center gap-3 justify-between">
@@ -816,6 +858,45 @@ async function processCharge(id, action) {
   try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges() }
   catch (err) { toast(errMsg(err), 'error') }
   finally { _chargeProcessing.delete(id) }
+}
+
+// 충전 내역 보기 — 지금까지의 충전 요청/처리 이력 전체 (완료·거절·대기 포함)
+async function openChargeHistory() {
+  openModal(`<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i> 불러오는 중...</div>`, { maxWidth: 'max-w-2xl' })
+  let charges = []
+  try { charges = (await api.get('/admin/charge-requests')).data.charges || [] }
+  catch (err) { toast(errMsg(err), 'error'); closeModal(); return }
+
+  const badge = (s) => {
+    const map = { PENDING: ['승인 대기','bg-yellow-100 text-yellow-700'], COMPLETED: ['충전 완료','bg-green-100 text-green-700'], REJECTED: ['거절','bg-red-100 text-red-700'] }
+    const [t, cls] = map[s] || [s,'bg-gray-100 text-gray-600']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls} font-bold">${t}</span>`
+  }
+  // 완료 건 합계 요약
+  const completed = charges.filter(r => r.status === 'COMPLETED')
+  const completedSum = completed.reduce((s, r) => s + Number(r.amount || 0), 0)
+
+  const rows = charges.length ? charges.map(r => `
+    <div class="bg-gray-50 rounded-xl p-3">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <div class="flex items-center gap-2">${badge(r.status)}<span class="text-xs text-gray-400">${fmtDateTime(r.requestedAt)}</span></div>
+        <div class="font-extrabold text-gray-700 whitespace-nowrap">${won(r.amount)}P</div>
+      </div>
+      <div class="text-sm text-gray-600">${r.name || '-'}(@${r.nickname || '-'}) · 입금자명 <b class="text-gray-700">${r.depositor || '-'}</b></div>
+      ${r.status !== 'PENDING' ? `<div class="text-xs text-gray-400 mt-0.5">처리 ${fmtDateTime(r.processedAt)}</div>` : ''}
+    </div>`).join('') : '<p class="text-center text-gray-400 py-10">아직 충전 내역이 없습니다.</p>'
+
+  openModal(`
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-extrabold text-lg"><i class="fas fa-clock-rotate-left text-brand-orange"></i> 충전 내역 (${charges.length})</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+      </div>
+      <div class="bg-green-50 rounded-xl p-3 mb-3 flex items-center justify-between">
+        <span class="text-sm text-green-700 font-medium"><i class="fas fa-check-circle"></i> 충전 완료 ${completed.length}건</span>
+        <span class="font-extrabold text-green-700">누적 ${won(completedSum)}P</span>
+      </div>
+      <div class="space-y-2 max-h-[55vh] overflow-y-auto">${rows}</div>
+    </div>`, { maxWidth: 'max-w-2xl' })
 }
 
 // 구독 관리 — 구독료를 납부한 회원 목록 + 활성/비활성 토글

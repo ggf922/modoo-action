@@ -9751,6 +9751,29 @@ admin.get("/members/vip-plus-count", async (c) => {
   ).bind(...VIP_PLUS_GRADES).first();
   return c.json({ count: row?.cnt ?? 0 });
 });
+admin.get("/grant-history", async (c) => {
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, userId, amount, description, createdAt
+     FROM point_history
+     WHERE type = 'ADMIN_ADJ'
+       AND (description LIKE '\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09%' OR description LIKE '\uC6D4 \uAD6C\uB3C5\uB8CC \uCC28\uAC10%')
+     ORDER BY createdAt DESC
+     LIMIT 3000`
+  ).all()).results;
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const sec = String(r.createdAt).slice(0, 19);
+    const key = `${r.description}||${sec}`;
+    const kind = r.description.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC") ? "SUBSCRIPTION" : "GRANT";
+    const g = groups.get(key);
+    if (g) {
+      g.count++;
+      g.totalAmount += Number(r.amount);
+    } else groups.set(key, { kind, description: r.description, createdAt: r.createdAt, count: 1, totalAmount: Number(r.amount) });
+  }
+  const history = Array.from(groups.values()).sort((a, b2) => a.createdAt < b2.createdAt ? 1 : -1);
+  return c.json({ history });
+});
 admin.get("/members/:id", async (c) => {
   const m = await c.env.DB.prepare(
     `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role, u.grade,
