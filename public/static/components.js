@@ -294,3 +294,74 @@ function buildTreeLayout(rootId, byParent, opts) {
   const svgH = maxY + 20
   return { positions, svgW, svgH }
 }
+
+// ===== 공통 표 다운로드 헬퍼 (CSV / Excel) =====
+// header: ['컬럼1', ...], rows: [[셀,셀,...], ...], filename: 확장자 제외 파일명
+// format: 'csv' | 'xlsx'
+
+// 브라우저 다운로드 트리거
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
+// CSV (UTF-8 BOM — 엑셀/한글 호환)
+function downloadCsv(header, rows, filename) {
+  const cell = (v) => {
+    const s = (v === null || v === undefined) ? '' : String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+  const lines = [header.map(cell).join(',')]
+  for (const r of rows) lines.push(r.map(cell).join(','))
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  triggerDownload(blob, filename + '.csv')
+}
+
+// SheetJS(xlsx) 동적 로드 (CDN)
+let _xlsxLoading = null
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve(window.XLSX)
+  if (_xlsxLoading) return _xlsxLoading
+  _xlsxLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+    s.onload = () => resolve(window.XLSX)
+    s.onerror = () => { _xlsxLoading = null; reject(new Error('Excel 라이브러리 로드 실패')) }
+    document.head.appendChild(s)
+  })
+  return _xlsxLoading
+}
+
+// Excel(.xlsx)
+async function downloadXlsx(header, rows, filename, sheetName) {
+  const XLSX = await loadXlsxLib()
+  const aoa = [header, ...rows]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  // 컬럼 폭 자동(대략)
+  ws['!cols'] = header.map((h, i) => {
+    let max = String(h || '').length
+    for (const r of rows) { const l = String(r[i] == null ? '' : r[i]).length; if (l > max) max = l }
+    return { wch: Math.min(Math.max(max + 2, 8), 40) }
+  })
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1')
+  XLSX.writeFile(wb, filename + '.xlsx')
+}
+
+// 통합 진입점: format 에 따라 CSV/Excel 로 저장
+async function downloadTable(format, header, rows, filename, sheetName) {
+  if (!rows || !rows.length) { if (typeof toast === 'function') toast('다운로드할 데이터가 없습니다.', 'error'); return }
+  try {
+    if (format === 'xlsx') await downloadXlsx(header, rows, filename, sheetName)
+    else downloadCsv(header, rows, filename)
+    if (typeof toast === 'function') toast(`${won(rows.length)}건 다운로드 완료`, 'success')
+  } catch (err) {
+    if (typeof toast === 'function') toast((err && err.message) || '다운로드 실패', 'error')
+    else console.error(err)
+  }
+}

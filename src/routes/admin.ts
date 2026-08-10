@@ -605,11 +605,22 @@ admin.get('/network', async (c) => {
 
 // ===== 충전 요청 관리 =====
 admin.get('/charge-requests', async (c) => {
-  const rows = (await c.env.DB.prepare(
-    `SELECT cr.*, u.name, u.nickname, u.email, u.auctionPoint
-     FROM charge_requests cr JOIN users u ON u.id = cr.userId
-     ORDER BY CASE cr.status WHEN 'PENDING' THEN 0 ELSE 1 END, cr.requestedAt DESC`
-  ).all()).results
+  // 요청일(requestedAt) 날짜 필터 (YYYY-MM-DD)
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  const fromRaw = (c.req.query('from') || '').trim()
+  const toRaw = (c.req.query('to') || '').trim()
+  const from = dateRe.test(fromRaw) ? fromRaw : ''
+  const to = dateRe.test(toRaw) ? toRaw : ''
+
+  let sql = `SELECT cr.*, u.name, u.nickname, u.email, u.auctionPoint
+     FROM charge_requests cr JOIN users u ON u.id = cr.userId`
+  const conds: string[] = []
+  const binds: any[] = []
+  if (from) { conds.push('cr.requestedAt >= ?'); binds.push(`${from} 00:00:00`) }
+  if (to) { conds.push('cr.requestedAt <= ?'); binds.push(`${to} 23:59:59.999`) }
+  if (conds.length) sql += ' WHERE ' + conds.join(' AND ')
+  sql += ` ORDER BY CASE cr.status WHEN 'PENDING' THEN 0 ELSE 1 END, cr.requestedAt DESC`
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
   return c.json({ charges: rows })
 })
 

@@ -395,7 +395,10 @@ async function pageAdminMembers(params, query) {
         </div>
         <button onclick="applyMemberDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-calendar-day"></i> 기간 조회</button>
         ${hasFilter ? `<a href="#/admin/members" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 flex items-center"><i class="fas fa-rotate-left"></i> 초기화</a>` : ''}
-        <button onclick="downloadMembers()" class="ml-auto px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-arrow-down"></i> CSV 다운로드</button>
+        <div class="ml-auto flex gap-2">
+          <button onclick="downloadMembers('csv')" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-csv"></i> CSV</button>
+          <button onclick="downloadMembers('xlsx')" class="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-excel"></i> Excel</button>
+        </div>
       </div>
       ${(from || to) ? `<p class="text-xs text-blue-600 mt-2"><i class="fas fa-filter"></i> 가입일 ${from || '처음'} ~ ${to || '오늘'} 기준</p>` : ''}
     </div>
@@ -461,8 +464,8 @@ function applyMemberDate() {
   navMembers(qEl ? qEl.value : '', from, to)
 }
 
-// 현재 필터 기준 회원목록 전체를 CSV(UTF-8 BOM)로 다운로드
-async function downloadMembers() {
+// 현재 필터 기준 회원목록 전체를 CSV/Excel 로 다운로드
+async function downloadMembers(format) {
   const qEl = document.querySelector('#member-search input[name="q"]')
   const fromEl = document.getElementById('member-from')
   const toEl = document.getElementById('member-to')
@@ -483,39 +486,18 @@ async function downloadMembers() {
   const rows = data.members || []
   if (!rows.length) { toast('다운로드할 회원이 없습니다.', 'error'); return }
 
-  const csvCell = (v) => {
-    const s = (v === null || v === undefined) ? '' : String(v)
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-  }
   const gradeLabel = (g, role) => role === 'ADMIN' ? '관리자' : (typeof gradeInfo === 'function' ? gradeInfo(g).label : g)
-
   const header = ['이름', '닉네임', '이메일', '추천코드', '등급', '상태', '추천인', '경매P', '가입일']
-  const lines = [header.join(',')]
-  for (const m of rows) {
-    lines.push([
-      csvCell(m.name),
-      csvCell(m.nickname),
-      csvCell(m.email),
-      csvCell(m.referralCode),
-      csvCell(gradeLabel(m.grade, m.role)),
-      csvCell(m.role === 'ADMIN' ? '-' : (Number(m.active) === 0 ? '비활성' : '활성')),
-      csvCell(m.referrerNickname || ''),
-      csvCell(Number(m.auctionPoint) || 0),
-      csvCell(fmtDateTime(m.createdAt)),
-    ].join(','))
-  }
-
-  const bom = '\uFEFF'
-  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const body = rows.map(m => [
+    m.name, m.nickname, m.email, m.referralCode,
+    gradeLabel(m.grade, m.role),
+    m.role === 'ADMIN' ? '-' : (Number(m.active) === 0 ? '비활성' : '활성'),
+    m.referrerNickname || '',
+    Number(m.auctionPoint) || 0,
+    fmtDateTime(m.createdAt),
+  ])
   const range = (from || to) ? `_${from || '처음'}_${to || '오늘'}` : '_전체'
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `회원목록${range}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-  toast(`${won(rows.length)}명 다운로드 완료`, 'success')
+  await downloadTable(format, header, body, `회원목록${range}`, '회원목록')
 }
 
 // 회원 목록에서 등급 인라인 변경
@@ -928,7 +910,10 @@ async function openGrantHistory() {
           </div>
           <button onclick="applyGrantHistoryDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-magnifying-glass"></i> 조회</button>
           <button onclick="clearGrantHistoryDate()" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100"><i class="fas fa-rotate-left"></i> 초기화</button>
-          <button onclick="downloadGrantHistory()" class="ml-auto px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-arrow-down"></i> CSV 다운로드</button>
+          <span class="ml-auto flex gap-2">
+            <button onclick="downloadGrantHistory('csv')" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-csv"></i> CSV</button>
+            <button onclick="downloadGrantHistory('xlsx')" class="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-excel"></i> Excel</button>
+          </span>
         </div>
       </div>
 
@@ -987,8 +972,8 @@ async function reloadGrantHistory() {
   updateGrantHistoryMore(data.hasMore)
 }
 
-// 현재 필터 기준으로 전체 데이터를 받아 CSV(UTF-8 BOM)로 다운로드
-async function downloadGrantHistory() {
+// 현재 필터 기준으로 전체 데이터를 받아 CSV/Excel 로 다운로드
+async function downloadGrantHistory(format) {
   let data
   try {
     toast('다운로드 준비 중...', 'info')
@@ -1003,44 +988,25 @@ async function downloadGrantHistory() {
     if (h.kind === 'GRANT') return '일괄 지급'
     return Number(h.totalAmount) < 0 ? '개별 회수' : '개별 지급'
   }
-  const csvCell = (v) => {
-    const s = (v === null || v === undefined) ? '' : String(v)
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-  }
-
   const header = ['일시', '구분', '내용', '대상', '대상인원', '금액(P)']
-  const lines = [header.join(',')]
-  for (const h of rows) {
+  const body = rows.map(h => {
     const isIndividual = h.kind === 'INDIVIDUAL'
     const target = isIndividual
       ? (h.userName ? `${h.userName}${h.userNickname ? '(@' + h.userNickname + ')' : ''}` : '(삭제된 회원)')
       : ''
-    const people = isIndividual ? '' : String(h.count || '')
-    lines.push([
-      csvCell(fmtDateTime(h.createdAt)),
-      csvCell(kindLabel(h)),
-      csvCell(h.description || ''),
-      csvCell(target),
-      csvCell(people),
-      csvCell(Number(h.totalAmount)),
-    ].join(','))
-  }
-
-  const bom = '\uFEFF'
-  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+    return [
+      fmtDateTime(h.createdAt),
+      kindLabel(h),
+      h.description || '',
+      target,
+      isIndividual ? '' : (h.count || ''),
+      Number(h.totalAmount),
+    ]
+  })
   const range = (_grantHistoryFrom || _grantHistoryTo)
     ? `_${_grantHistoryFrom || '처음'}_${_grantHistoryTo || '오늘'}`
     : '_전체'
-  const fname = `지급내역${range}.csv`
-
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = fname
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-  toast(`${won(rows.length)}건 다운로드 완료`, 'success')
+  await downloadTable(format, header, body, `지급내역${range}`, '지급내역')
 }
 
 // "더 보기" 버튼 갱신
@@ -1109,18 +1075,43 @@ async function processWd(id, action) {
 }
 
 // 충전 관리 (입금 → 관리자 승인)
-async function pageAdminCharges() {
+async function pageAdminCharges(params, query) {
   if (!adminGuard()) return
+  const q = query || getQuery() || {}
+  const from = q.from || ''
+  const to = q.to || ''
   document.getElementById('app').innerHTML = renderLoading()
-  const { data } = await api.get('/admin/charge-requests')
+  const parts = []
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+  const { data } = await api.get('/admin/charge-requests' + (parts.length ? '?' + parts.join('&') : ''))
   const badge = (s) => {
     const map = { PENDING: ['승인 대기','bg-yellow-100 text-yellow-700'], COMPLETED: ['충전 완료','bg-green-100 text-green-700'], REJECTED: ['거절','bg-red-100 text-red-700'] }
     const [t, cls] = map[s] || [s,'bg-gray-100']; return `<span class="text-xs px-2 py-0.5 rounded-full ${cls}">${t}</span>`
   }
   document.getElementById('app').innerHTML = adminLayout('/admin/charges', `
-    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <h2 class="font-bold">충전 요청 관리 (${data.charges.length})</h2>
       <button onclick="openChargeHistory()" class="bg-white border border-brand-orange text-brand-orange px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap hover:bg-orange-50"><i class="fas fa-clock-rotate-left"></i> 충전내역 보기</button>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-4">
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">요청 시작일</label>
+          <input type="date" id="charge-from" value="${from}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">요청 종료일</label>
+          <input type="date" id="charge-to" value="${to}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <button onclick="applyChargeDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-calendar-day"></i> 기간 조회</button>
+        ${(from || to) ? `<a href="#/admin/charges" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 flex items-center"><i class="fas fa-rotate-left"></i> 초기화</a>` : ''}
+        <span class="ml-auto flex gap-2">
+          <button onclick="downloadCharges('csv')" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-csv"></i> CSV</button>
+          <button onclick="downloadCharges('xlsx')" class="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-excel"></i> Excel</button>
+        </span>
+      </div>
+      ${(from || to) ? `<p class="text-xs text-blue-600 mt-2"><i class="fas fa-filter"></i> 요청일 ${from || '처음'} ~ ${to || '오늘'} 기준</p>` : ''}
     </div>
     <div class="space-y-2">
     ${data.charges.length ? data.charges.map(r => `
@@ -1142,9 +1133,52 @@ async function processCharge(id, action) {
   if (_chargeProcessing.has(id)) return // 중복 클릭(동시 요청) 방지
   if (!confirm(action==='approve' ? '충전을 승인하시겠습니까? 회원에게 포인트가 지급됩니다.' : '충전 요청을 거절하시겠습니까?')) return
   _chargeProcessing.add(id)
-  try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges() }
+  try { await api.post(`/admin/charge-requests/${id}/process`, { action }); toast(action==='approve'?'충전 승인 완료':'거절 처리됨', 'success'); pageAdminCharges({}, getQuery()) }
   catch (err) { toast(errMsg(err), 'error') }
   finally { _chargeProcessing.delete(id) }
+}
+
+// 충전관리 기간 조회
+function applyChargeDate() {
+  const fromEl = document.getElementById('charge-from')
+  const toEl = document.getElementById('charge-to')
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  if (from && to && from > to) { toast('시작일이 종료일보다 늦습니다.', 'error'); return }
+  const parts = []
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+  Router.navigate('/admin/charges' + (parts.length ? '?' + parts.join('&') : ''))
+}
+
+// 충전 요청 목록 CSV/Excel 다운로드 (현재 기간 필터 기준)
+async function downloadCharges(format) {
+  const fromEl = document.getElementById('charge-from')
+  const toEl = document.getElementById('charge-to')
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  const parts = []
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+  let data
+  try {
+    toast('다운로드 준비 중...', 'info')
+    data = (await api.get('/admin/charge-requests' + (parts.length ? '?' + parts.join('&') : ''))).data
+  } catch (err) { toast(errMsg(err), 'error'); return }
+  const rows = data.charges || []
+  if (!rows.length) { toast('다운로드할 충전 요청이 없습니다.', 'error'); return }
+  const statLabel = (s) => ({ PENDING: '승인 대기', COMPLETED: '충전 완료', REJECTED: '거절' }[s] || s)
+  const header = ['요청일', '상태', '금액(P)', '회원', '닉네임', '이메일', '입금자명', '처리일']
+  const body = rows.map(r => [
+    fmtDateTime(r.requestedAt),
+    statLabel(r.status),
+    Number(r.amount) || 0,
+    r.name || '', r.nickname || '', r.email || '',
+    r.depositor || '',
+    r.status !== 'PENDING' ? fmtDateTime(r.processedAt) : '',
+  ])
+  const range = (from || to) ? `_${from || '처음'}_${to || '오늘'}` : '_전체'
+  await downloadTable(format, header, body, `충전요청${range}`, '충전요청')
 }
 
 // 충전 내역 보기 — 지금까지의 충전 요청/처리 이력 전체 (완료·거절·대기 포함)
@@ -1172,6 +1206,9 @@ async function openChargeHistory() {
       ${r.status !== 'PENDING' ? `<div class="text-xs text-gray-400 mt-0.5">처리 ${fmtDateTime(r.processedAt)}</div>` : ''}
     </div>`).join('') : '<p class="text-center text-gray-400 py-10">아직 충전 내역이 없습니다.</p>'
 
+  // 다운로드용 캐시
+  _chargeHistoryCache = charges
+
   openModal(`
     <div class="p-6">
       <div class="flex items-center justify-between mb-4">
@@ -1182,21 +1219,77 @@ async function openChargeHistory() {
         <span class="text-sm text-green-700 font-medium"><i class="fas fa-check-circle"></i> 충전 완료 ${completed.length}건</span>
         <span class="font-extrabold text-green-700">누적 ${won(completedSum)}P</span>
       </div>
-      <div class="space-y-2 max-h-[55vh] overflow-y-auto">${rows}</div>
+      <div class="flex justify-end gap-2 mb-3">
+        <button onclick="downloadChargeHistory('csv')" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-csv"></i> CSV</button>
+        <button onclick="downloadChargeHistory('xlsx')" class="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-excel"></i> Excel</button>
+      </div>
+      <div class="space-y-2 max-h-[52vh] overflow-y-auto">${rows}</div>
     </div>`, { maxWidth: 'max-w-2xl' })
 }
 
+let _chargeHistoryCache = []
+// 충전 내역(모달) CSV/Excel 다운로드
+async function downloadChargeHistory(format) {
+  const rows = _chargeHistoryCache || []
+  if (!rows.length) { toast('다운로드할 충전 내역이 없습니다.', 'error'); return }
+  const statLabel = (s) => ({ PENDING: '승인 대기', COMPLETED: '충전 완료', REJECTED: '거절' }[s] || s)
+  const header = ['요청일', '상태', '금액(P)', '회원', '닉네임', '입금자명', '처리일']
+  const body = rows.map(r => [
+    fmtDateTime(r.requestedAt),
+    statLabel(r.status),
+    Number(r.amount) || 0,
+    r.name || '', r.nickname || '',
+    r.depositor || '',
+    r.status !== 'PENDING' ? fmtDateTime(r.processedAt) : '',
+  ])
+  await downloadTable(format, header, body, '충전내역_전체', '충전내역')
+}
+
 // 구독 관리 — 구독료를 납부한 회원 목록 + 활성/비활성 토글
-async function pageAdminSubscriptions() {
+let _adminSubs = []   // 다운로드용 현재 목록 캐시(필터 적용 후)
+async function pageAdminSubscriptions(params, query) {
   if (!adminGuard()) return
+  const qq = query || getQuery() || {}
+  const from = qq.from || ''
+  const to = qq.to || ''
   document.getElementById('app').innerHTML = renderLoading()
   const { data } = await api.get('/admin/subscriptions')
-  const subs = data.subscriptions || []
+  let subs = data.subscriptions || []
+  // 최근 납부일(lastPaidAt) 기준 기간 필터 (클라이언트)
+  if (from || to) {
+    subs = subs.filter(s => {
+      const d = (s.lastPaidAt || '').slice(0, 10)   // YYYY-MM-DD
+      if (!d) return false                            // 납부 이력 없는 회원은 기간 필터 시 제외
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    })
+  }
+  _adminSubs = subs
   const activeCount = subs.filter(s => s.subscriptionActive).length
   document.getElementById('app').innerHTML = adminLayout('/admin/subscriptions', `
-    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <h2 class="font-bold">구독 회원 관리 (${subs.length}명)</h2>
       <span class="text-sm text-gray-400">활성 <b class="text-green-600">${activeCount}</b> · 비활성 <b class="text-gray-500">${subs.length - activeCount}</b></span>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-3">
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">최근납부 시작일</label>
+          <input type="date" id="sub-from" value="${from}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">최근납부 종료일</label>
+          <input type="date" id="sub-to" value="${to}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <button onclick="applySubDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-calendar-day"></i> 기간 조회</button>
+        ${(from || to) ? `<a href="#/admin/subscriptions" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 flex items-center"><i class="fas fa-rotate-left"></i> 초기화</a>` : ''}
+        <span class="ml-auto flex gap-2">
+          <button onclick="downloadSubscriptions('csv')" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-csv"></i> CSV</button>
+          <button onclick="downloadSubscriptions('xlsx')" class="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-excel"></i> Excel</button>
+        </span>
+      </div>
+      ${(from || to) ? `<p class="text-xs text-blue-600 mt-2"><i class="fas fa-filter"></i> 최근납부일 ${from || '처음'} ~ ${to || '오늘'} 기준 (납부 이력 있는 회원만)</p>` : ''}
     </div>
     <div class="bg-orange-50 rounded-2xl px-4 py-3 mb-4 text-xs text-gray-500">
       <i class="fas fa-circle-info text-brand-orange"></i> 월 구독료(10,000P)를 납부했거나 <b class="text-brand-orange">VIP 이상 등급 + 활성</b> 회원이 자동으로 목록에 표시됩니다. <b class="text-brand-orange">활성</b> 버튼을 누르면 구독 기간이 한 달 추가 연장되며, <b>비활성화</b>로 구독을 끌 수 있습니다.
@@ -1229,9 +1322,43 @@ async function pageAdminSubscriptions() {
             : `<button onclick="extendSubscription('${s.id}')" class="bg-brand-orange text-white px-4 py-2 rounded-xl text-sm font-bold"><i class="fas fa-crown"></i> 활성</button>
                <button onclick="toggleSubscription('${s.id}', true)" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">활성화</button>`}
         </div>
-      </div>`).join('') : '<p class="text-center text-gray-400 py-10">구독 대상 회원이 없습니다.</p>'}
+      </div>`).join('') : `<p class="text-center text-gray-400 py-10">${(from || to) ? '선택한 기간에 납부한 구독 회원이 없습니다.' : '구독 대상 회원이 없습니다.'}</p>`}
     </div>`)
 }
+
+// 구독관리 기간 조회
+function applySubDate() {
+  const fromEl = document.getElementById('sub-from')
+  const toEl = document.getElementById('sub-to')
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  if (from && to && from > to) { toast('시작일이 종료일보다 늦습니다.', 'error'); return }
+  const parts = []
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+  Router.navigate('/admin/subscriptions' + (parts.length ? '?' + parts.join('&') : ''))
+}
+
+// 구독 회원 목록 CSV/Excel 다운로드 (현재 화면 필터 기준 = _adminSubs)
+async function downloadSubscriptions(format) {
+  const rows = _adminSubs || []
+  if (!rows.length) { toast('다운로드할 구독 회원이 없습니다.', 'error'); return }
+  const gradeLabel = (g) => (typeof gradeInfo === 'function' ? gradeInfo(g).label : g)
+  const header = ['이름', '닉네임', '이메일', '등급', '구독상태', '최근납부', '납부횟수', '구독만료', '보유경매P']
+  const body = rows.map(s => [
+    s.name || '', s.nickname || '', s.email || '',
+    gradeLabel(s.grade),
+    s.subscriptionActive ? '활성' : '비활성',
+    s.lastPeriod || '',
+    s.payCount || 0,
+    s.subscriptionUntil || '',
+    Number(s.auctionPoint) || 0,
+  ])
+  const qq = getQuery() || {}
+  const range = (qq.from || qq.to) ? `_${qq.from || '처음'}_${qq.to || '오늘'}` : '_전체'
+  await downloadTable(format, header, body, `구독회원${range}`, '구독회원')
+}
+
 const _subToggling = new Set()
 async function toggleSubscription(userId, active) {
   if (_subToggling.has(userId)) return
@@ -1239,7 +1366,7 @@ async function toggleSubscription(userId, active) {
   try {
     await api.post(`/admin/subscriptions/${userId}/toggle`, { active })
     toast(active ? '구독을 활성화했습니다.' : '구독을 비활성화했습니다.', 'success')
-    pageAdminSubscriptions()
+    pageAdminSubscriptions({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
   finally { _subToggling.delete(userId) }
 }
@@ -1252,7 +1379,7 @@ async function extendSubscription(userId) {
   try {
     const { data } = await api.post(`/admin/subscriptions/${userId}/extend`, {})
     toast(`구독이 한 달 연장되었습니다. (만료일 ${data.until})`, 'success')
-    pageAdminSubscriptions()
+    pageAdminSubscriptions({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
   finally { _subExtending.delete(userId) }
 }
@@ -1268,7 +1395,7 @@ async function setSubscriptionUntil(userId) {
   try {
     const { data } = await api.post(`/admin/subscriptions/${userId}/set-until`, { until })
     toast(`구독 만료일이 ${data.until}(으)로 변경되었습니다.${data.active ? '' : ' (만료일이 지나 비활성 처리됨)'}`, 'success')
-    pageAdminSubscriptions()
+    pageAdminSubscriptions({}, getQuery())
   } catch (err) { toast(errMsg(err), 'error') }
   finally { _subSettingUntil.delete(userId) }
 }
