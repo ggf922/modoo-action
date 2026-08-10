@@ -228,15 +228,26 @@ admin.patch('/products/:id/settings', async (c) => {
 admin.get('/members', async (c) => {
   await ensureMemberFlags(c.env.DB)
   const q = c.req.query('q')
+  // 가입일(createdAt) 날짜 필터 (YYYY-MM-DD)
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  const fromRaw = (c.req.query('from') || '').trim()
+  const toRaw = (c.req.query('to') || '').trim()
+  const from = dateRe.test(fromRaw) ? fromRaw : ''
+  const to = dateRe.test(toRaw) ? toRaw : ''
+
   let sql = `SELECT u.id, u.email, u.name, u.nickname, u.role, u.grade, u.auctionPoint, u.balancePoint, u.wagePoint,
                     u.referralCode, u.referrerId, u.active, u.createdAt,
                     r.nickname AS "referrerNickname"
              FROM users u LEFT JOIN users r ON r.id = u.referrerId`
+  const conds: string[] = []
   const binds: any[] = []
   if (q) {
-    sql += ' WHERE u.email LIKE ? OR u.name LIKE ? OR u.nickname LIKE ?'
+    conds.push('(u.email LIKE ? OR u.name LIKE ? OR u.nickname LIKE ?)')
     binds.push(`%${q}%`, `%${q}%`, `%${q}%`)
   }
+  if (from) { conds.push('u.createdAt >= ?'); binds.push(`${from} 00:00:00`) }
+  if (to) { conds.push('u.createdAt <= ?'); binds.push(`${to} 23:59:59.999`) }
+  if (conds.length) sql += ' WHERE ' + conds.join(' AND ')
   sql += ' ORDER BY u.createdAt DESC'
   const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
   return c.json({ members: rows })

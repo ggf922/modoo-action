@@ -365,7 +365,14 @@ async function pageAdminMembers(params, query) {
   if (!adminGuard()) return
   document.getElementById('app').innerHTML = renderLoading()
   const q = query.q || ''
-  const { data } = await api.get('/admin/members' + (q ? '?q=' + encodeURIComponent(q) : ''))
+  const from = query.from || ''
+  const to = query.to || ''
+  const qs = []
+  if (q) qs.push('q=' + encodeURIComponent(q))
+  if (from) qs.push('from=' + encodeURIComponent(from))
+  if (to) qs.push('to=' + encodeURIComponent(to))
+  const { data } = await api.get('/admin/members' + (qs.length ? '?' + qs.join('&') : ''))
+  const hasFilter = q || from || to
   document.getElementById('app').innerHTML = adminLayout('/admin/members', `
     <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
       <h2 class="font-bold">회원 목록 (${data.members.length})</h2>
@@ -373,11 +380,24 @@ async function pageAdminMembers(params, query) {
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-4">
       <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info text-brand-orange"></i> 아이디/이름/닉네임으로 검색 후 <b class="text-brand-orange">지급/회수</b> 버튼으로 경매P를 지급하거나, 잘못 충전·지급한 포인트를 <b class="text-red-500">회수(복구)</b>할 수 있습니다.</p>
-      <form id="member-search" class="flex gap-2 w-full">
+      <form id="member-search" class="flex gap-2 w-full mb-2">
         <input name="q" value="${q}" placeholder="아이디 · 이름 · 닉네임으로 검색" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
         <button type="submit" class="bg-brand-orange text-white px-5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-search"></i> 검색</button>
-        ${q ? `<a href="#/admin/members" class="bg-gray-100 text-gray-500 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap flex items-center">초기화</a>` : ''}
       </form>
+      <div class="flex flex-wrap items-end gap-2 pt-2 border-t border-gray-50">
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">가입 시작일</label>
+          <input type="date" id="member-from" value="${from}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <div class="flex flex-col">
+          <label class="text-xs text-gray-500 mb-1">가입 종료일</label>
+          <input type="date" id="member-to" value="${to}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+        </div>
+        <button onclick="applyMemberDate()" class="px-3 py-1.5 rounded-lg bg-brand-orange text-white text-sm font-bold hover:opacity-90"><i class="fas fa-calendar-day"></i> 기간 조회</button>
+        ${hasFilter ? `<a href="#/admin/members" class="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 flex items-center"><i class="fas fa-rotate-left"></i> 초기화</a>` : ''}
+        <button onclick="downloadMembers()" class="ml-auto px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:opacity-90"><i class="fas fa-file-arrow-down"></i> CSV 다운로드</button>
+      </div>
+      ${(from || to) ? `<p class="text-xs text-blue-600 mt-2"><i class="fas fa-filter"></i> 가입일 ${from || '처음'} ~ ${to || '오늘'} 기준</p>` : ''}
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
       <table class="w-full text-sm min-w-[640px]">
@@ -415,8 +435,87 @@ async function pageAdminMembers(params, query) {
   document.getElementById('member-search').addEventListener('submit', (e) => {
     e.preventDefault()
     const q = new FormData(e.target).get('q')
-    Router.navigate('/admin/members' + (q ? '?q=' + encodeURIComponent(q) : ''))
+    const fromEl = document.getElementById('member-from')
+    const toEl = document.getElementById('member-to')
+    navMembers(q, fromEl ? fromEl.value : '', toEl ? toEl.value : '')
   })
+}
+
+// 회원목록 필터 쿼리로 이동
+function navMembers(q, from, to) {
+  const parts = []
+  if (q) parts.push('q=' + encodeURIComponent(q))
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+  Router.navigate('/admin/members' + (parts.length ? '?' + parts.join('&') : ''))
+}
+
+// "기간 조회" — 현재 검색어 유지한 채 날짜 필터 적용
+function applyMemberDate() {
+  const qEl = document.querySelector('#member-search input[name="q"]')
+  const fromEl = document.getElementById('member-from')
+  const toEl = document.getElementById('member-to')
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  if (from && to && from > to) { toast('시작일이 종료일보다 늦습니다.', 'error'); return }
+  navMembers(qEl ? qEl.value : '', from, to)
+}
+
+// 현재 필터 기준 회원목록 전체를 CSV(UTF-8 BOM)로 다운로드
+async function downloadMembers() {
+  const qEl = document.querySelector('#member-search input[name="q"]')
+  const fromEl = document.getElementById('member-from')
+  const toEl = document.getElementById('member-to')
+  const q = qEl ? qEl.value : ''
+  const from = fromEl ? fromEl.value : ''
+  const to = toEl ? toEl.value : ''
+  const parts = []
+  if (q) parts.push('q=' + encodeURIComponent(q))
+  if (from) parts.push('from=' + encodeURIComponent(from))
+  if (to) parts.push('to=' + encodeURIComponent(to))
+
+  let data
+  try {
+    toast('다운로드 준비 중...', 'info')
+    data = (await api.get('/admin/members' + (parts.length ? '?' + parts.join('&') : ''))).data
+  } catch (err) { toast(errMsg(err), 'error'); return }
+
+  const rows = data.members || []
+  if (!rows.length) { toast('다운로드할 회원이 없습니다.', 'error'); return }
+
+  const csvCell = (v) => {
+    const s = (v === null || v === undefined) ? '' : String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+  const gradeLabel = (g, role) => role === 'ADMIN' ? '관리자' : (typeof gradeInfo === 'function' ? gradeInfo(g).label : g)
+
+  const header = ['이름', '닉네임', '이메일', '추천코드', '등급', '상태', '추천인', '경매P', '가입일']
+  const lines = [header.join(',')]
+  for (const m of rows) {
+    lines.push([
+      csvCell(m.name),
+      csvCell(m.nickname),
+      csvCell(m.email),
+      csvCell(m.referralCode),
+      csvCell(gradeLabel(m.grade, m.role)),
+      csvCell(m.role === 'ADMIN' ? '-' : (Number(m.active) === 0 ? '비활성' : '활성')),
+      csvCell(m.referrerNickname || ''),
+      csvCell(Number(m.auctionPoint) || 0),
+      csvCell(fmtDateTime(m.createdAt)),
+    ].join(','))
+  }
+
+  const bom = '\uFEFF'
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const range = (from || to) ? `_${from || '처음'}_${to || '오늘'}` : '_전체'
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `회원목록${range}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  toast(`${won(rows.length)}명 다운로드 완료`, 'success')
 }
 
 // 회원 목록에서 등급 인라인 변경
@@ -1460,34 +1559,72 @@ async function saveProductSettings(pid) {
 }
 
 // ===== 관리자 전체 조직도 (추천인 계보도) =====
-async function pageAdminNetwork() {
+let _adminNetworkData = null   // { members, summary, total, fullRoot } 캐시
+
+async function pageAdminNetwork(params, query) {
   if (!adminGuard()) return
   document.getElementById('app').innerHTML = renderLoading()
   const { data } = await api.get('/admin/network')
-  const { root, members, summary, total } = data
+  _adminNetworkData = { members: data.members, summary: data.summary, total: data.total, fullRoot: data.root }
+  renderAdminNetwork((query && query.q) || '')
+}
 
-  // 추천 관계로 트리 구성 (referrerId 기준)
+// 검색어(q)에 따라 루트를 정해 조직도를 그린다. q 없으면 전체(관리자 루트).
+function renderAdminNetwork(q) {
+  const { members, summary, total, fullRoot } = _adminNetworkData
+  q = (q || '').trim()
+
+  // 검색: 이름/닉네임/추천코드로 매칭되는 첫 회원을 루트로.
+  let root = fullRoot
+  let searchRoot = null
+  if (q) {
+    const lower = q.toLowerCase()
+    searchRoot = members.find(m =>
+      (m.name && m.name.toLowerCase().includes(lower)) ||
+      (m.nickname && m.nickname.toLowerCase().includes(lower)) ||
+      (m.referralCode && m.referralCode.toLowerCase().includes(lower))
+    )
+    if (searchRoot) root = searchRoot
+  }
+
+  // 추천 관계로 트리 구성 (referrerId 기준) — 전체 회원 기준으로 자식 맵 구성
   const byParent = {}
   members.forEach(m => {
-    if (m.id === root.id) return
+    if (m.id === fullRoot.id) return
     const pid = m.referrerId || '__orphan__'
     ;(byParent[pid] = byParent[pid] || []).push(m)
   })
-  // 추천인이 없는(루트가 아닌) 회원은 루트 아래에 묶어 표시
+  // 추천인이 없는(전체 루트가 아닌) 회원은 전체 루트 아래에 묶어 표시
   const orphans = byParent['__orphan__'] || []
   if (orphans.length) {
-    byParent[root.id] = (byParent[root.id] || []).concat(orphans)
+    byParent[fullRoot.id] = (byParent[fullRoot.id] || []).concat(orphans)
   }
+
+  // 검색 시: root(검색된 회원)와 그 후손만 남기도록 visible 집합 계산
+  let visible = null
+  if (searchRoot) {
+    visible = new Set()
+    const stack = [root.id]
+    while (stack.length) {
+      const id = stack.pop()
+      if (visible.has(id)) continue
+      visible.add(id)
+      ;(byParent[id] || []).forEach(c => stack.push(c.id))
+    }
+  }
+  const inView = (id) => !visible || visible.has(id)
+  const viewMembers = visible ? members.filter(m => visible.has(m.id)) : members
+  const descendantCount = visible ? (visible.size - 1) : (total - 1)
 
   const NODE_W = 158, NODE_H = 70, H_GAP = 26, V_GAP = 76
   // 서브트리 폭 기반 레이아웃 — 회원/추천인이 많아져도 노드가 겹치지 않음
   const { positions, svgW, svgH } = buildTreeLayout(root.id, byParent, { NODE_W, NODE_H, H_GAP, V_GAP })
 
-  // 엣지
+  // 엣지 (검색 시엔 viewMembers = 루트+후손만)
   let edges = ''
-  members.forEach(m => {
+  viewMembers.forEach(m => {
     if (m.id === root.id) return
-    const pid = m.referrerId || root.id
+    const pid = m.referrerId || fullRoot.id
     const p = positions[pid], cc = positions[m.id]
     if (!p || !cc) return
     const x1 = p.x + NODE_W/2, y1 = p.y + NODE_H
@@ -1498,7 +1635,7 @@ async function pageAdminNetwork() {
 
   // 노드
   let nodeEls = ''
-  members.forEach(m => {
+  viewMembers.forEach(m => {
     const pos = positions[m.id]
     if (!pos) return
     const isRoot = m.id === root.id
@@ -1523,11 +1660,28 @@ async function pageAdminNetwork() {
     </g>`
   })
 
+  const notFound = q && !searchRoot
+  const headTitle = searchRoot
+    ? `${searchRoot.name} 님 하위 조직도`
+    : '전체 조직도 (추천인 계보도)'
+  const badge = searchRoot
+    ? `<span class="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-medium">본인 포함 ${(visible ? visible.size : 1)}명 (하위 ${descendantCount}명)</span>`
+    : `<span class="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-medium">전체 ${total}명</span>`
+
   document.getElementById('app').innerHTML = adminLayout('/admin/members', `
     <a href="#/admin/members" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 회원목록</a>
-    <div class="flex items-center justify-between mt-3 mb-4 flex-wrap gap-2">
-      <h2 class="font-bold text-lg"><i class="fas fa-sitemap text-blue-600"></i> 전체 조직도 (추천인 계보도)</h2>
-      <span class="text-sm bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-medium">전체 ${total}명</span>
+    <div class="flex items-center justify-between mt-3 mb-3 flex-wrap gap-2">
+      <h2 class="font-bold text-lg"><i class="fas fa-sitemap text-blue-600"></i> ${headTitle}</h2>
+      ${badge}
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 p-3 mb-4">
+      <p class="text-xs text-gray-400 mb-2"><i class="fas fa-circle-info text-blue-600"></i> 이름·닉네임·추천코드로 검색하면 해당 회원을 <b class="text-blue-600">최상위</b>로 하는 하위 조직도만 볼 수 있습니다.</p>
+      <form id="network-search" class="flex gap-2 w-full">
+        <input name="q" value="${q ? q.replace(/"/g, '&quot;') : ''}" placeholder="이름 · 닉네임 · 추천코드로 검색" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500" />
+        <button type="submit" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap"><i class="fas fa-search"></i> 검색</button>
+        ${searchRoot ? `<button type="button" onclick="clearNetworkSearch()" class="bg-gray-100 text-gray-500 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap"><i class="fas fa-rotate-left"></i> 전체보기</button>` : ''}
+      </form>
+      ${notFound ? `<p class="text-xs text-red-500 mt-2"><i class="fas fa-triangle-exclamation"></i> "${q}" 와(과) 일치하는 회원을 찾지 못했습니다. 전체 조직도를 표시합니다.</p>` : ''}
     </div>
     <div class="grid lg:grid-cols-3 gap-4">
       <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-4 overflow-auto">
@@ -1544,6 +1698,17 @@ async function pageAdminNetwork() {
         <div class="text-center text-gray-400 py-8"><div class="text-3xl mb-2">👆</div><p class="text-sm">노드를 클릭하면<br/>회원 상세가 표시돼요</p></div>
       </div>
     </div>`)
+
+  const sf = document.getElementById('network-search')
+  if (sf) sf.addEventListener('submit', (e) => {
+    e.preventDefault()
+    const val = (new FormData(e.target).get('q') || '').trim()
+    Router.navigate('/admin/network' + (val ? '?q=' + encodeURIComponent(val) : ''))
+  })
+}
+
+function clearNetworkSearch() {
+  Router.navigate('/admin/network')
 }
 
 function showAdminNodeDetail(n) {
