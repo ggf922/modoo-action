@@ -8360,6 +8360,7 @@ var QUOTED_COLUMNS = [
   "endAt",
   "productUrl",
   "roundNo",
+  "buyNowPrice",
   // bids
   "userId",
   "productId",
