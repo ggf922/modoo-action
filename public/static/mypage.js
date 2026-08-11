@@ -53,6 +53,81 @@ async function joinAuction(productId, entryFee) {
   }
 }
 
+// ===== 방안 B: 포인트 즉시구매 (경매 미참여 즉시구매) =====
+async function buyNow(productId, buyNowPrice) {
+  if (!Store.user) { requireLoginRedirect(); return }
+
+  const balance = Store.user.auctionPoint ?? 0
+  // 포인트 부족 → 안내 모달 (충전 유도)
+  if (balance < buyNowPrice) {
+    const shortage = buyNowPrice - balance
+    openModal(`<div class="p-7 text-center">
+      <div class="text-5xl mb-3">😢</div>
+      <h3 class="text-lg font-extrabold mb-1 text-red-500">포인트가 부족합니다</h3>
+      <p class="text-sm text-gray-500 mb-4">즉시 구매하려면 포인트를 충전해주세요.</p>
+      <div class="bg-gray-50 rounded-xl p-4 text-sm space-y-2 mb-5 text-left">
+        <div class="flex justify-between"><span class="text-gray-500">즉시구매가</span><b class="text-brand-dark">${won(buyNowPrice)}P</b></div>
+        <div class="flex justify-between"><span class="text-gray-500">보유 포인트</span><b class="text-brand-dark">${won(balance)}P</b></div>
+        <div class="border-t border-gray-200 pt-2 flex justify-between"><span class="text-gray-600 font-medium">부족 포인트</span><b class="text-red-500">${won(shortage)}P</b></div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">닫기</button>
+        <button onclick="closeModal();Router.navigate('/mypage/charge')" class="flex-1 bg-brand-orange text-white font-bold py-3 rounded-xl hover:bg-orange-600"><i class="fas fa-bolt"></i> 충전하기</button>
+      </div>
+    </div>`)
+    return
+  }
+
+  // 구매 확인 모달
+  openModal(`<div class="p-7 text-center">
+    <div class="text-5xl mb-3">🛒</div>
+    <h3 class="text-lg font-extrabold mb-1">지금 바로 구매하시겠어요?</h3>
+    <p class="text-sm text-gray-500 mb-4">경매에 참여하지 않고 즉시 구매합니다.</p>
+    <div class="bg-green-50 rounded-xl p-4 text-sm space-y-2 mb-5 text-left">
+      <div class="flex justify-between"><span class="text-gray-500">즉시구매가</span><b class="text-green-700">${won(buyNowPrice)}P</b></div>
+      <div class="flex justify-between"><span class="text-gray-500">보유 포인트</span><b class="text-brand-dark">${won(balance)}P</b></div>
+      <div class="border-t border-green-200 pt-2 flex justify-between"><span class="text-gray-600 font-medium">구매 후 잔액</span><b class="text-brand-dark">${won(balance - buyNowPrice)}P</b></div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">취소</button>
+      <button onclick="confirmBuyNow('${productId}')" class="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700"><i class="fas fa-cart-shopping"></i> 구매하기</button>
+    </div>
+  </div>`)
+}
+
+async function confirmBuyNow(productId) {
+  openModal(`<div class="p-8 text-center">
+    <div class="text-5xl mb-4" style="animation:spin360 1s ease infinite"><i class="fas fa-cart-shopping text-green-600"></i></div>
+    <p class="font-bold">구매 처리 중...</p>
+  </div>`, { dismissable: false })
+
+  try {
+    const { data } = await api.post(`/products/${productId}/buy-now`)
+    await Store.loadMe()
+    const savedTxt = (data.marketPrice && data.buyNowPrice)
+      ? `<p class="text-xs text-gray-400 mt-1">시중가 ${won(data.marketPrice)}원 대비 ${Math.round((1 - data.buyNowPrice / data.marketPrice) * 100)}% 절약!</p>`
+      : ''
+    openModal(`<div class="p-8 text-center">
+      <div class="text-6xl mb-4 animate-pop">🎉</div>
+      <h3 class="text-xl font-extrabold mb-2">구매 완료!</h3>
+      <p class="text-gray-700 font-medium mb-1">${data.title}</p>
+      <div class="bg-green-50 rounded-xl p-4 my-4">
+        <p class="text-sm text-gray-500">구매가</p>
+        <p class="text-2xl font-extrabold text-green-700">${won(data.buyNowPrice)}P</p>
+        ${savedTxt}
+      </div>
+      <p class="text-sm text-gray-400 mb-4">마이페이지에서 배송지를 입력해주세요 🚚</p>
+      <div class="flex gap-2">
+        <button onclick="closeModal();render()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">확인</button>
+        <button onclick="closeModal();Router.navigate('/mypage/bids')" class="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700">배송지 입력</button>
+      </div>
+    </div>`)
+  } catch (err) {
+    closeModal()
+    toast(errMsg(err), 'error')
+  }
+}
+
 // 당첨 결과 모달 (룰렛/슬롯 애니메이션 후 결과)
 function showDrawResult(data) {
   // 1단계: 추첨 애니메이션
@@ -679,7 +754,9 @@ async function pageBids(params, query) {
   <div class="flex gap-2 mb-4">${tabBtn('all','전체')}${tabBtn('win','🏆 당첨')}${tabBtn('lose','미당첨')}</div>
   <div class="grid sm:grid-cols-2 gap-3">
     ${bids.length ? bids.map(b => {
-      const status = b.productStatus === 'OPEN' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">진행중</span>'
+      const isBuyNow = b.purchaseType === 'BUYNOW'
+      const status = isBuyNow ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">🛒 즉시구매</span>'
+        : b.productStatus === 'OPEN' ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">진행중</span>'
         : b.isWinner ? '<span class="text-xs bg-brand-gold/30 text-yellow-800 px-2 py-0.5 rounded-full font-bold">🏆 당첨</span>'
         : '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">미당첨</span>'
       // 당첨 시 배송 상태 뱃지/버튼
@@ -706,8 +783,9 @@ async function pageBids(params, query) {
           <img src="${b.imageUrl}" class="w-20 h-20 rounded-xl object-cover" onerror="this.src='https://placehold.co/80'" />
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-2"><h3 class="font-bold text-sm truncate">${b.title}</h3>${status}</div>
-            <div class="text-xs text-gray-400 mt-1">참여 ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
-            ${b.isWinner ? `<div class="text-xs text-brand-orange font-medium mt-1">낙찰가 ${won(b.startPrice)}원에 자동구매</div>`
+            <div class="text-xs text-gray-400 mt-1">${isBuyNow ? '구매' : '참여'} ${won(b.pointsUsed)}P · ${fmtDate(b.createdAt)}</div>
+            ${isBuyNow ? `<div class="text-xs text-green-600 font-medium mt-1">즉시구매 완료 (${won(b.finalPrice)}P 차감)</div>`
+              : b.isWinner ? `<div class="text-xs text-brand-orange font-medium mt-1">낙찰가 ${won(b.startPrice)}원에 자동구매</div>`
               : (b.productStatus==='DRAWN' ? `<div class="text-xs text-green-600 font-medium mt-1">보상 +${won(b.losingReward)}P 지급</div>` : '')}
           </div>
         </a>

@@ -284,11 +284,20 @@ async function pageProduct(params) {
       ? `<div class="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-2 text-center text-sm text-green-700 font-bold">
           <i class="fas fa-check-circle"></i> 현재 ${myBidCount}회 참여 중입니다. 정원이 차면 자동 추첨돼요!</div>`
       : ''
+    // 즉시구매 버튼 (방안 B): buyNowPrice 가 0보다 클 때만 표시. 경매 미참여 즉시구매.
+    const buyNowP = Number(p.buyNowPrice || 0)
+    const buyNowBtn = buyNowP > 0
+      ? `<button onclick="buyNow('${p.id}', ${buyNowP})"
+          class="w-full bg-green-600 text-white font-bold py-4 rounded-xl hover:bg-green-700 transition text-lg shadow-lg shadow-green-200 mt-2">
+          <i class="fas fa-cart-shopping"></i> ${won(buyNowP)}P로 지금 바로 구매</button>
+        <p class="text-xs text-gray-400 text-center mt-2">경매에 참여하지 않고 즉시 구매합니다 · 경매포인트에서 차감돼요</p>`
+      : ''
     actionBtn = `${myCountBadge}
       <button onclick="joinAuction('${p.id}', ${p.entryFee})"
         class="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition text-lg shadow-lg shadow-orange-200">
         <i class="fas fa-gavel"></i> ${won(p.startPrice)}P로 ${myBidCount > 0 ? '추가 ' : ''}경매 참여하기</button>
-      <p class="text-xs text-gray-400 text-center mt-2">남은 정원 ${remaining}자리 · 경매포인트가 있는 한 반복 참여할 수 있어요</p>`
+      <p class="text-xs text-gray-400 text-center mt-2">남은 정원 ${remaining}자리 · 경매포인트가 있는 한 반복 참여할 수 있어요</p>
+      ${buyNowBtn}`
   }
 
   document.getElementById('app').innerHTML = layout(`

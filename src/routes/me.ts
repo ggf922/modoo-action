@@ -58,13 +58,35 @@ me.get('/bids', async (c) => {
   const rows = (await c.env.DB.prepare(
     `SELECT b.*, p.title, p.imageUrl, p.marketPrice, p.startPrice, p.losingReward, p.status AS productStatus,
             w.id AS "winnerId", w.finalPrice, w.shippingStatus,
-            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo
+            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo,
+            'AUCTION' AS "purchaseType"
      FROM bids b
      JOIN products p ON p.id = b.productId
      LEFT JOIN winners w ON w.bidId = b.id
      WHERE b.userId = ? ORDER BY b.createdAt DESC`
   ).bind(user.id).all()).results
-  return c.json({ bids: rows })
+
+  // 방안 B: 즉시구매 건 (bids 없이 winners 만 존재 → bidId IS NULL) 을 함께 노출한다.
+  //   기존 경매 참여 내역과 동일한 카드로 렌더링되도록 필요한 컬럼을 맞춰 내려준다.
+  const buyNowRows = (await c.env.DB.prepare(
+    `SELECT w.id AS id, w.userId, w.productId, w.finalPrice AS "pointsUsed",
+            1 AS "isWinner", w.drawnAt AS "createdAt",
+            p.title, p.imageUrl, p.marketPrice, w.finalPrice AS "startPrice", p.losingReward,
+            p.status AS productStatus,
+            w.id AS "winnerId", w.finalPrice, w.shippingStatus,
+            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo,
+            'BUYNOW' AS "purchaseType"
+     FROM winners w
+     JOIN products p ON p.id = w.productId
+     WHERE w.userId = ? AND (w.bidId IS NULL OR w.bidId = '')
+     ORDER BY w.drawnAt DESC`
+  ).bind(user.id).all()).results
+
+  // 최신순으로 병합 (createdAt/drawnAt 기준 내림차순)
+  const merged = [...rows, ...buyNowRows].sort((a: any, b: any) =>
+    String(b.createdAt).localeCompare(String(a.createdAt))
+  )
+  return c.json({ bids: merged })
 })
 
 // 당첨 상품 배송 정보 입력/수정 (당첨 제품은 반품 불가)

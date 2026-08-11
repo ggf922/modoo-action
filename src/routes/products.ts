@@ -15,6 +15,16 @@ export async function ensureProductUrlColumn(DB: any) {
   _productUrlReady = true
 }
 
+// 즉시구매가(buyNowPrice) 컬럼 런타임 보장 (방안 B: 포인트 즉시구매)
+//   경매에 참여하지 않고 보유 경매포인트로 바로 구매하려는 회원용.
+//   0 이면 즉시구매 비활성(버튼 미표시). 관리자가 미입력 시 marketPrice 로 자동 설정.
+let _buyNowPriceReady = false
+export async function ensureBuyNowPriceColumn(DB: any) {
+  if (_buyNowPriceReady) return
+  await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS "buyNowPrice" BIGINT NOT NULL DEFAULT 0`).run()
+  _buyNowPriceReady = true
+}
+
 // 반복 참여 허용: bids 의 UNIQUE(userId, productId) 제약을 제거 (프로덕션 런타임 보장)
 //   → 회원이 경매포인트가 있는 한 같은 경매에 여러 번 참여할 수 있다.
 //   ⚠️ 제약명에 대문자(userId/productId)가 포함되므로 반드시 큰따옴표로 감싸야 한다.
@@ -33,6 +43,7 @@ export async function ensureRepeatBids(DB: any) {
 //  2) 사용자 무관 공개 데이터이므로 짧은 TTL(3초) 인메모리 캐싱 → DB 직격 감소
 //     입찰/추첨/상품변경 시 invalidate('products') 로 즉시 갱신.
 products.get('/', async (c) => {
+  await ensureBuyNowPriceColumn(c.env.DB)
   const status = c.req.query('status')
   const cacheKey = `products:${status || 'ALL'}`
   const rows = await cached(cacheKey, 3000, async () => {
@@ -51,7 +62,7 @@ products.get('/', async (c) => {
   const out = user
     ? rows
     : rows.map((r: any) => {
-        const { startPrice, marketPrice, ...rest } = r
+        const { startPrice, marketPrice, buyNowPrice, ...rest } = r
         return { ...rest, priceHidden: true }
       })
   return c.json({ products: out })
@@ -61,6 +72,7 @@ products.get('/', async (c) => {
 products.get('/:id', async (c) => {
   const id = c.req.param('id')
   await ensureProductUrlColumn(c.env.DB)
+  await ensureBuyNowPriceColumn(c.env.DB)
   await ensureBidRound(c.env.DB)
   const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>()
   if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
@@ -92,7 +104,7 @@ products.get('/:id', async (c) => {
   // 폐쇄몰/도매몰: 비로그인 사용자에게는 가격을 노출하지 않는다.
   let outProduct: any = product
   if (!user) {
-    const { startPrice, marketPrice, ...rest } = product as any
+    const { startPrice, marketPrice, buyNowPrice, ...rest } = product as any
     outProduct = { ...rest, priceHidden: true }
   }
 
@@ -180,6 +192,68 @@ products.post('/:id/join', requireAuth, async (c) => {
     won,
     losingReward: product.losingReward,
     startPrice: product.startPrice,
+    marketPrice: product.marketPrice,
+    title: product.title,
+  })
+})
+
+// ===== 방안 B: 포인트 즉시구매 =====
+// 경매에 참여하지 않고 보유 경매포인트로 즉시구매가(buyNowPrice)를 차감하고 바로 구매 확정.
+//   - winners 레코드를 생성해 기존 배송관리(shipments) 흐름에 그대로 유입시킨다.
+//   - 경매 정원(participantCount)·추첨 로직과 완전히 독립 → 기존 경매 흐름 미침해.
+products.post('/:id/buy-now', requireAuth, async (c) => {
+  const id = c.req.param('id')
+  const user = c.get('user')!
+
+  await ensureBuyNowPriceColumn(c.env.DB)
+  const product = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>()
+  if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
+  if (product.status !== 'OPEN') return c.json({ error: '판매가 마감된 상품입니다.' }, 400)
+
+  const buyNowPrice = Number((product as any).buyNowPrice ?? 0)
+  if (!buyNowPrice || buyNowPrice <= 0) {
+    return c.json({ error: '이 상품은 즉시구매를 지원하지 않습니다.' }, 400)
+  }
+
+  const dbUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first<UserRow>()
+  if (!dbUser) return c.json({ error: '사용자 정보를 찾을 수 없습니다.' }, 404)
+
+  // 포인트 검증 (경매포인트에서 차감)
+  if (dbUser.auctionPoint < buyNowPrice) {
+    return c.json({ error: `포인트가 부족합니다. (필요: ${buyNowPrice.toLocaleString()}P, 보유: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400)
+  }
+
+  // 원자적 트랜잭션:
+  //   - 포인트 차감 UPDATE 를 조건부(auctionPoint >= buyNowPrice)로 하고 .requireRows() 표시:
+  //     0행이면(동시요청으로 잔액이 막 부족해졌으면) 트랜잭션 전체 롤백 → winners/내역도 취소.
+  //   - winners 레코드 생성 (shippingStatus 기본 PENDING) → 관리자 배송관리에 자동 유입.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        'UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?'
+      ).bind(buyNowPrice, user.id, buyNowPrice).requireRows(),
+      c.env.DB.prepare(
+        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
+         VALUES (?, ?, ?, ?, datetime('now'))`
+      ).bind(genId('w-'), user.id, id, buyNowPrice),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), user.id, -buyNowPrice, `즉시구매: ${product.title} (${buyNowPrice.toLocaleString()}P)`),
+    ])
+  } catch (e: any) {
+    if (e?.name === 'BatchGuardError') {
+      return c.json({ error: '포인트가 부족합니다.' }, 400)
+    }
+    throw e
+  }
+
+  invalidate('products')
+
+  return c.json({
+    ok: true,
+    bought: true,
+    buyNowPrice,
     marketPrice: product.marketPrice,
     title: product.title,
   })

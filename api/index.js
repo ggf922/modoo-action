@@ -8983,6 +8983,12 @@ async function ensureProductUrlColumn(DB) {
   await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS productUrl TEXT NOT NULL DEFAULT ''`).run();
   _productUrlReady = true;
 }
+var _buyNowPriceReady = false;
+async function ensureBuyNowPriceColumn(DB) {
+  if (_buyNowPriceReady) return;
+  await DB.prepare(`ALTER TABLE products ADD COLUMN IF NOT EXISTS "buyNowPrice" BIGINT NOT NULL DEFAULT 0`).run();
+  _buyNowPriceReady = true;
+}
 var _repeatBidsReady = false;
 async function ensureRepeatBids(DB) {
   if (_repeatBidsReady) return;
@@ -8990,6 +8996,7 @@ async function ensureRepeatBids(DB) {
   _repeatBidsReady = true;
 }
 products.get("/", async (c) => {
+  await ensureBuyNowPriceColumn(c.env.DB);
   const status = c.req.query("status");
   const cacheKey2 = `products:${status || "ALL"}`;
   const rows = await cached(cacheKey2, 3e3, async () => {
@@ -9004,7 +9011,7 @@ products.get("/", async (c) => {
   });
   const user = c.get("user");
   const out = user ? rows : rows.map((r) => {
-    const { startPrice, marketPrice, ...rest } = r;
+    const { startPrice, marketPrice, buyNowPrice, ...rest } = r;
     return { ...rest, priceHidden: true };
   });
   return c.json({ products: out });
@@ -9012,6 +9019,7 @@ products.get("/", async (c) => {
 products.get("/:id", async (c) => {
   const id = c.req.param("id");
   await ensureProductUrlColumn(c.env.DB);
+  await ensureBuyNowPriceColumn(c.env.DB);
   await ensureBidRound(c.env.DB);
   const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
@@ -9035,7 +9043,7 @@ products.get("/:id", async (c) => {
   }
   let outProduct = product;
   if (!user) {
-    const { startPrice, marketPrice, ...rest } = product;
+    const { startPrice, marketPrice, buyNowPrice, ...rest } = product;
     outProduct = { ...rest, priceHidden: true };
   }
   return c.json({ product: outProduct, participants, winners, myBid, myBidCount });
@@ -9095,6 +9103,51 @@ products.post("/:id/join", requireAuth, async (c) => {
     won,
     losingReward: product.losingReward,
     startPrice: product.startPrice,
+    marketPrice: product.marketPrice,
+    title: product.title
+  });
+});
+products.post("/:id/buy-now", requireAuth, async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  await ensureBuyNowPriceColumn(c.env.DB);
+  const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
+  if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (product.status !== "OPEN") return c.json({ error: "\uD310\uB9E4\uAC00 \uB9C8\uAC10\uB41C \uC0C1\uD488\uC785\uB2C8\uB2E4." }, 400);
+  const buyNowPrice = Number(product.buyNowPrice ?? 0);
+  if (!buyNowPrice || buyNowPrice <= 0) {
+    return c.json({ error: "\uC774 \uC0C1\uD488\uC740 \uC989\uC2DC\uAD6C\uB9E4\uB97C \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
+  }
+  const dbUser = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
+  if (!dbUser) return c.json({ error: "\uC0AC\uC6A9\uC790 \uC815\uBCF4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (dbUser.auctionPoint < buyNowPrice) {
+    return c.json({ error: `\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uD544\uC694: ${buyNowPrice.toLocaleString()}P, \uBCF4\uC720: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400);
+  }
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?"
+      ).bind(buyNowPrice, user.id, buyNowPrice).requireRows(),
+      c.env.DB.prepare(
+        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
+         VALUES (?, ?, ?, ?, datetime('now'))`
+      ).bind(genId("w-"), user.id, id, buyNowPrice),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), user.id, -buyNowPrice, `\uC989\uC2DC\uAD6C\uB9E4: ${product.title} (${buyNowPrice.toLocaleString()}P)`)
+    ]);
+  } catch (e) {
+    if (e?.name === "BatchGuardError") {
+      return c.json({ error: "\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4." }, 400);
+    }
+    throw e;
+  }
+  invalidate("products");
+  return c.json({
+    ok: true,
+    bought: true,
+    buyNowPrice,
     marketPrice: product.marketPrice,
     title: product.title
   });
@@ -9200,13 +9253,30 @@ me.get("/bids", async (c) => {
   const rows = (await c.env.DB.prepare(
     `SELECT b.*, p.title, p.imageUrl, p.marketPrice, p.startPrice, p.losingReward, p.status AS productStatus,
             w.id AS "winnerId", w.finalPrice, w.shippingStatus,
-            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo
+            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo,
+            'AUCTION' AS "purchaseType"
      FROM bids b
      JOIN products p ON p.id = b.productId
      LEFT JOIN winners w ON w.bidId = b.id
      WHERE b.userId = ? ORDER BY b.createdAt DESC`
   ).bind(user.id).all()).results;
-  return c.json({ bids: rows });
+  const buyNowRows = (await c.env.DB.prepare(
+    `SELECT w.id AS id, w.userId, w.productId, w.finalPrice AS "pointsUsed",
+            1 AS "isWinner", w.drawnAt AS "createdAt",
+            p.title, p.imageUrl, p.marketPrice, w.finalPrice AS "startPrice", p.losingReward,
+            p.status AS productStatus,
+            w.id AS "winnerId", w.finalPrice, w.shippingStatus,
+            w.recipientName, w.recipientPhone, w.postalCode, w.address1, w.address2, w.deliveryMemo,
+            'BUYNOW' AS "purchaseType"
+     FROM winners w
+     JOIN products p ON p.id = w.productId
+     WHERE w.userId = ? AND (w.bidId IS NULL OR w.bidId = '')
+     ORDER BY w.drawnAt DESC`
+  ).bind(user.id).all()).results;
+  const merged = [...rows, ...buyNowRows].sort(
+    (a, b2) => String(b2.createdAt).localeCompare(String(a.createdAt))
+  );
+  return c.json({ bids: merged });
 });
 me.post("/winners/:id/shipping", async (c) => {
   const user = c.get("user");
@@ -9485,12 +9555,14 @@ admin.post("/products", async (c) => {
   if (sp <= 0) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 0\uBCF4\uB2E4 \uCEE4\uC57C \uD569\uB2C8\uB2E4." }, 400);
   if (sp > mp) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD074 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
   const entryFee = sp;
+  const buyNowPrice = Math.max(0, Math.floor(Number(b2.buyNowPrice ?? 0) || 0));
   const id = genId("p-");
   await ensureProductUrlColumn(c.env.DB);
+  await ensureBuyNowPriceColumn(c.env.DB);
   const maxOrder = (await c.env.DB.prepare("SELECT COALESCE(MAX(sortOrder), -1) AS m FROM products").first())?.m ?? -1;
   await c.env.DB.prepare(
-    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, productUrl, startAt, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, datetime('now'), datetime('now'))`
+    `INSERT INTO products (id, title, description, imageUrl, category, marketPrice, startPrice, entryFee, maxParticipants, winnersCount, losingReward, status, sortOrder, productUrl, buyNowPrice, startAt, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, datetime('now'), datetime('now'))`
   ).bind(
     id,
     b2.title,
@@ -9504,13 +9576,15 @@ admin.post("/products", async (c) => {
     Number(b2.winnersCount ?? 1),
     Number(b2.losingReward ?? 200),
     maxOrder + 1,
-    (b2.productUrl ?? "").trim()
+    (b2.productUrl ?? "").trim(),
+    buyNowPrice
   ).run();
   invalidate("products");
   return c.json({ ok: true, id });
 });
 admin.get("/products/:id", async (c) => {
   await ensureProductUrlColumn(c.env.DB);
+  await ensureBuyNowPriceColumn(c.env.DB);
   const product = await c.env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(c.req.param("id")).first();
   if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   return c.json({ product });
@@ -9524,9 +9598,11 @@ admin.put("/products/:id", async (c) => {
   if (sp <= 0) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 0\uBCF4\uB2E4 \uCEE4\uC57C \uD569\uB2C8\uB2E4." }, 400);
   if (sp > mp) return c.json({ error: "\uC2DC\uC791\uAC00\uB294 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD074 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
   const entryFee = sp;
+  const buyNowPrice = Math.max(0, Math.floor(Number(b2.buyNowPrice ?? 0) || 0));
   await ensureProductUrlColumn(c.env.DB);
+  await ensureBuyNowPriceColumn(c.env.DB);
   await c.env.DB.prepare(
-    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=?, productUrl=? WHERE id=?`
+    `UPDATE products SET title=?, description=?, imageUrl=?, category=?, marketPrice=?, startPrice=?, entryFee=?, maxParticipants=?, winnersCount=?, losingReward=?, status=?, productUrl=?, buyNowPrice=? WHERE id=?`
   ).bind(
     b2.title,
     b2.description ?? "",
@@ -9540,6 +9616,7 @@ admin.put("/products/:id", async (c) => {
     Number(b2.losingReward),
     b2.status ?? "OPEN",
     (b2.productUrl ?? "").trim(),
+    buyNowPrice,
     id
   ).run();
   invalidate("products");

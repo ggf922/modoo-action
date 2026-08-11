@@ -240,6 +240,12 @@ async function pageAdminProductForm(params) {
             <input name="startPrice" type="number" min="0" value="${p.startPrice ?? ''}" oninput="updatePricePreview()" placeholder="예: 50000" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange" />
           </div>
         </div>
+        <!-- 즉시구매가 (방안 B: 경매 미참여 회원 즉시구매) -->
+        <div class="mt-3 rounded-xl border border-green-200 bg-green-50/50 p-3">
+          <label class="block text-sm font-medium mb-1"><i class="fas fa-cart-shopping text-green-600"></i> 즉시구매가(P) <span class="text-gray-400 font-normal">— 경매 미참여 즉시구매용</span></label>
+          <input name="buyNowPrice" type="number" min="0" value="${p.buyNowPrice ?? ''}" placeholder="예: 60000 (비워두면 즉시구매 비활성)" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-green-500" />
+          <p class="text-xs text-gray-400 mt-1"><i class="fas fa-circle-info"></i> 회원이 경매에 참여하지 않고 이 금액(경매포인트)을 차감하여 <b>바로 구매</b>할 수 있어요. 구매 즉시 배송관리에 등록됩니다. <b>비워두거나 0이면 즉시구매 버튼이 표시되지 않아요.</b></p>
+        </div>
         <!-- 실시간 미리보기 -->
         <div id="price-preview" class="mt-3 flex items-center justify-between bg-white rounded-xl border border-gray-100 px-4 py-3">
           <div>
