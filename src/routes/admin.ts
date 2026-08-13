@@ -13,6 +13,14 @@ import { ensureMemberFlags, maybePayReferralReward } from '../lib/referral'
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
 
+// winners.bidId 컬럼 런타임 보장 (즉시구매 vs 경매당첨 구분용, 부작용 없는 경량 보장)
+let _winnerBidIdReady = false
+async function ensureBidRoundSafe(DB: any) {
+  if (_winnerBidIdReady) return
+  await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run()
+  _winnerBidIdReady = true
+}
+
 // 대시보드 KPI
 admin.get('/stats', async (c) => {
   const db = c.env.DB
@@ -486,6 +494,7 @@ admin.get('/grant-history', async (c) => {
 
 // 단일 회원 상세 (수정 폼용)
 admin.get('/members/:id', async (c) => {
+  const uid = c.req.param('id')
   const m = await c.env.DB.prepare(
     `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role, u.grade,
             u.auctionPoint, u.balancePoint, u.wagePoint, u.referralCode, u.referrerId,
@@ -493,9 +502,50 @@ admin.get('/members/:id', async (c) => {
             r.nickname AS "referrerNickname", r.name AS "referrerName"
      FROM users u LEFT JOIN users r ON r.id = u.referrerId
      WHERE u.id = ?`
-  ).bind(c.req.param('id')).first()
+  ).bind(uid).first()
   if (!m) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
-  return c.json({ member: m })
+
+  // ===== 누적 내역 조회 (경매당첨/당첨경품/출금신청/충전입금/포인트 이력) =====
+  //   즉시구매 여부는 winners.bidId 로 구분 (bidId 없으면 방안 B 즉시구매)
+  await ensureBidRoundSafe(c.env.DB)
+
+  // 1) 당첨/구매 경품 (배송 상태 포함)
+  const winnings = (await c.env.DB.prepare(
+    `SELECT w.id, w.finalPrice, w.drawnAt, w.shippingStatus, w.bidId,
+            p.title, p.imageUrl, p.marketPrice
+     FROM winners w JOIN products p ON p.id = w.productId
+     WHERE w.userId = ? ORDER BY w.drawnAt DESC`
+  ).bind(uid).all()).results
+
+  // 2) 출금 신청 내역
+  const withdrawals = (await c.env.DB.prepare(
+    `SELECT id, amount, status, requestedAt, processedAt
+     FROM withdrawals WHERE userId = ? ORDER BY requestedAt DESC`
+  ).bind(uid).all()).results
+
+  // 3) 충전/입금 신청 내역
+  const charges = (await c.env.DB.prepare(
+    `SELECT id, amount, depositor, status, requestedAt, processedAt
+     FROM charge_requests WHERE userId = ? ORDER BY requestedAt DESC`
+  ).bind(uid).all()).results
+
+  // 4) 포인트 이력 (참여/보상/충전/출금/관리자조정 등 전체)
+  const pointHistory = (await c.env.DB.prepare(
+    `SELECT id, type, pointKind, amount, description, createdAt
+     FROM point_history WHERE userId = ? ORDER BY createdAt DESC`
+  ).bind(uid).all()).results
+
+  // 요약 집계
+  const summary = {
+    winCount: winnings.length,
+    winTotal: winnings.reduce((s: number, w: any) => s + Number(w.finalPrice || 0), 0),
+    withdrawCount: withdrawals.length,
+    withdrawTotal: withdrawals.filter((w: any) => w.status === 'COMPLETED' || w.status === 'APPROVED').reduce((s: number, w: any) => s + Number(w.amount || 0), 0),
+    chargeCount: charges.length,
+    chargeTotal: charges.filter((ch: any) => ch.status === 'COMPLETED').reduce((s: number, ch: any) => s + Number(ch.amount || 0), 0),
+  }
+
+  return c.json({ member: m, winnings, withdrawals, charges, pointHistory, summary })
 })
 
 // 회원 정보 수정 (이름/닉네임/연락처/이메일/추천인)

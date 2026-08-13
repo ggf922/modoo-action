@@ -542,9 +542,15 @@ async function changeGrade(userId) {
 
 // 회원 상세 정보 (가입 시 입력 항목 전체를 항목별로 정리)
 async function openMemberDetail(userId) {
-  let m
-  try { m = (await api.get('/admin/members/' + userId)).data.member }
+  let res
+  try { res = (await api.get('/admin/members/' + userId)).data }
   catch (err) { toast(errMsg(err), 'error'); return }
+  const m = res.member
+  const winnings = res.winnings || []
+  const withdrawals = res.withdrawals || []
+  const charges = res.charges || []
+  const pointHistory = res.pointHistory || []
+  const summary = res.summary || {}
 
   const fmtDateTime = (s) => { try { return new Date(s).toLocaleString('ko-KR') } catch { return s || '-' } }
   const row = (label, value, icon) =>
@@ -554,7 +560,101 @@ async function openMemberDetail(userId) {
      </div>`
   const isAdmin = m.role === 'ADMIN'
 
-  openModal(`<div class="p-6 max-h-[80vh] overflow-y-auto">
+  // ===== 누적 내역 렌더 헬퍼 =====
+  const badge = (txt, color) => `<span class="text-[11px] px-1.5 py-0.5 rounded font-bold ${color}">${txt}</span>`
+  const wdStatus = (s) => ({
+    PENDING: badge('대기', 'bg-yellow-100 text-yellow-700'),
+    APPROVED: badge('승인', 'bg-blue-100 text-blue-700'),
+    COMPLETED: badge('완료', 'bg-green-100 text-green-700'),
+    REJECTED: badge('거절', 'bg-red-100 text-red-600'),
+  }[s] || badge(s || '-', 'bg-gray-100 text-gray-500'))
+  const chStatus = (s) => ({
+    PENDING: badge('대기', 'bg-yellow-100 text-yellow-700'),
+    COMPLETED: badge('완료', 'bg-green-100 text-green-700'),
+    REJECTED: badge('거절', 'bg-red-100 text-red-600'),
+  }[s] || badge(s || '-', 'bg-gray-100 text-gray-500'))
+  const shipStatus = (s) => ({
+    PENDING: badge('배송정보 미입력', 'bg-red-50 text-red-500'),
+    SUBMITTED: badge('배송정보 입력완료', 'bg-blue-50 text-blue-600'),
+    SHIPPED: badge('발송됨', 'bg-green-50 text-green-600'),
+    DELIVERED: badge('배송완료', 'bg-green-100 text-green-700'),
+  }[s] || badge(s || '-', 'bg-gray-100 text-gray-500'))
+  const phType = (t) => ({
+    CHARGE: '충전', USE: '사용', REWARD: '보상', REFERRAL: '추천보상', WITHDRAW: '출금', ADMIN_ADJ: '관리자조정',
+  }[t] || t || '-')
+  const emptyRow = (txt) => `<div class="text-center text-gray-300 text-sm py-6">${txt}</div>`
+
+  // 탭 컨텐츠
+  const tabWinnings = winnings.length ? winnings.map(w => {
+    const isBuyNow = !w.bidId
+    return `<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+      <img src="${w.imageUrl}" class="w-10 h-10 rounded-lg object-cover shrink-0" onerror="this.src='https://placehold.co/40'" />
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-gray-700 truncate">${w.title}</div>
+        <div class="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          ${isBuyNow ? badge('🛒 즉시구매', 'bg-green-100 text-green-700') : badge('🏆 경매당첨', 'bg-amber-100 text-amber-700')}
+          ${shipStatus(w.shippingStatus)} · ${fmtDateTime(w.drawnAt)}</div>
+      </div>
+      <div class="text-sm font-bold text-brand-orange shrink-0">${won(w.finalPrice)}P</div>
+    </div>`
+  }).join('') : emptyRow('당첨/구매 경품 내역이 없습니다.')
+
+  const tabCharges = charges.length ? charges.map(ch => `
+    <div class="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+      <div class="min-w-0">
+        <div class="text-sm font-medium text-gray-700">${won(ch.amount)}P <span class="text-xs text-gray-400">입금자: ${ch.depositor || '-'}</span></div>
+        <div class="text-[11px] text-gray-400 mt-0.5">${fmtDateTime(ch.requestedAt)}${ch.processedAt ? ' → 처리 ' + fmtDateTime(ch.processedAt) : ''}</div>
+      </div>
+      ${chStatus(ch.status)}
+    </div>`).join('') : emptyRow('충전/입금 신청 내역이 없습니다.')
+
+  const tabWithdrawals = withdrawals.length ? withdrawals.map(wd => `
+    <div class="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+      <div class="min-w-0">
+        <div class="text-sm font-medium text-gray-700">${won(wd.amount)}P</div>
+        <div class="text-[11px] text-gray-400 mt-0.5">${fmtDateTime(wd.requestedAt)}${wd.processedAt ? ' → 처리 ' + fmtDateTime(wd.processedAt) : ''}</div>
+      </div>
+      ${wdStatus(wd.status)}
+    </div>`).join('') : emptyRow('출금 신청 내역이 없습니다.')
+
+  const tabPoints = pointHistory.length ? pointHistory.map(ph => {
+    const amt = Number(ph.amount || 0)
+    const plus = amt >= 0
+    return `<div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <div class="min-w-0 flex-1">
+        <div class="text-sm text-gray-700 truncate">${badge(phType(ph.type), 'bg-gray-100 text-gray-500')} ${ph.description || ''}</div>
+        <div class="text-[11px] text-gray-400 mt-0.5">${fmtDateTime(ph.createdAt)}</div>
+      </div>
+      <div class="text-sm font-bold shrink-0 ${plus ? 'text-green-600' : 'text-red-500'}">${plus ? '+' : ''}${won(amt)}P</div>
+    </div>`
+  }).join('') : emptyRow('포인트 이력이 없습니다.')
+
+  const tabBtn = (key, label, cnt) =>
+    `<button type="button" data-mdtab="${key}" onclick="switchMemberTab('${key}')"
+       class="mdtab-btn px-3 py-2 text-xs font-bold rounded-lg whitespace-nowrap bg-gray-100 text-gray-500">
+       ${label}${cnt != null ? ` <span class="text-gray-400">${cnt}</span>` : ''}</button>`
+
+  const historyBlock = isAdmin ? '' : `
+    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 mt-2">누적 활동 내역</div>
+    <div class="grid grid-cols-3 gap-2 mb-3 text-center">
+      <div class="bg-amber-50 rounded-xl py-2"><div class="text-[11px] text-gray-400">당첨/구매</div><div class="font-bold text-amber-700 text-sm">${summary.winCount || 0}건</div></div>
+      <div class="bg-green-50 rounded-xl py-2"><div class="text-[11px] text-gray-400">충전 완료</div><div class="font-bold text-green-700 text-sm">${won(summary.chargeTotal || 0)}P</div></div>
+      <div class="bg-blue-50 rounded-xl py-2"><div class="text-[11px] text-gray-400">출금 완료</div><div class="font-bold text-blue-700 text-sm">${won(summary.withdrawTotal || 0)}P</div></div>
+    </div>
+    <div class="flex gap-1.5 mb-2 overflow-x-auto pb-1">
+      ${tabBtn('winnings', '🏆 당첨/경품', summary.winCount || 0)}
+      ${tabBtn('charges', '💳 충전/입금', charges.length)}
+      ${tabBtn('withdrawals', '💸 출금신청', withdrawals.length)}
+      ${tabBtn('points', '📒 포인트이력', pointHistory.length)}
+    </div>
+    <div class="bg-gray-50 rounded-xl px-4 py-1 mb-5 max-h-64 overflow-y-auto">
+      <div class="mdtab-panel" data-mdpanel="winnings">${tabWinnings}</div>
+      <div class="mdtab-panel hidden" data-mdpanel="charges">${tabCharges}</div>
+      <div class="mdtab-panel hidden" data-mdpanel="withdrawals">${tabWithdrawals}</div>
+      <div class="mdtab-panel hidden" data-mdpanel="points">${tabPoints}</div>
+    </div>`
+
+  openModal(`<div class="p-6 max-h-[85vh] overflow-y-auto">
     <div class="flex items-center gap-3 mb-4">
       <div class="w-12 h-12 rounded-full bg-gradient-to-br from-brand-orange to-brand-gold flex items-center justify-center text-white text-xl font-bold shrink-0">${(m.name||'?').charAt(0)}</div>
       <div>
@@ -598,12 +698,31 @@ async function openMemberDetail(userId) {
       ${row('예금주', m.accountHolder || '<span class="text-gray-300">미등록</span>', 'fa-id-badge')}
     </div>
 
+    ${historyBlock}
+
     <div class="flex gap-2">
       <button onclick="closeModal();openMemberEdit('${m.id}')" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-pen"></i> 수정</button>
       <button onclick="closeModal();openAdjust('${m.id}','${m.nickname}', ${Number(m.auctionPoint) || 0})" class="flex-1 bg-orange-50 text-brand-orange py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-coins"></i> 지급/회수</button>
       ${isAdmin ? '' : `<button onclick="closeModal();deleteMember('${m.id}','${m.nickname}')" class="flex-1 bg-red-50 text-red-500 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-trash"></i> 삭제</button>`}
     </div>
   </div>`)
+
+  // 첫 탭(당첨/경품) 활성화
+  if (!isAdmin) switchMemberTab('winnings')
+}
+
+// 회원 상세 누적내역 탭 전환
+function switchMemberTab(key) {
+  document.querySelectorAll('.mdtab-panel').forEach(el => {
+    el.classList.toggle('hidden', el.getAttribute('data-mdpanel') !== key)
+  })
+  document.querySelectorAll('.mdtab-btn').forEach(el => {
+    const active = el.getAttribute('data-mdtab') === key
+    el.classList.toggle('bg-brand-orange', active)
+    el.classList.toggle('text-white', active)
+    el.classList.toggle('bg-gray-100', !active)
+    el.classList.toggle('text-gray-500', !active)
+  })
 }
 
 // 회원 정보 수정 모달

@@ -9492,6 +9492,12 @@ var me_default = me;
 // src/routes/admin.ts
 var admin = new Hono2();
 admin.use("*", requireAdmin);
+var _winnerBidIdReady = false;
+async function ensureBidRoundSafe(DB) {
+  if (_winnerBidIdReady) return;
+  await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run();
+  _winnerBidIdReady = true;
+}
 admin.get("/stats", async (c) => {
   const db = c.env.DB;
   const totalUsers = (await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='MEMBER'").first())?.c ?? 0;
@@ -9913,6 +9919,7 @@ admin.get("/grant-history", async (c) => {
   return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to });
 });
 admin.get("/members/:id", async (c) => {
+  const uid2 = c.req.param("id");
   const m = await c.env.DB.prepare(
     `SELECT u.id, u.email, u.name, u.nickname, u.phone, u.role, u.grade,
             u.auctionPoint, u.balancePoint, u.wagePoint, u.referralCode, u.referrerId,
@@ -9920,9 +9927,36 @@ admin.get("/members/:id", async (c) => {
             r.nickname AS "referrerNickname", r.name AS "referrerName"
      FROM users u LEFT JOIN users r ON r.id = u.referrerId
      WHERE u.id = ?`
-  ).bind(c.req.param("id")).first();
+  ).bind(uid2).first();
   if (!m) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
-  return c.json({ member: m });
+  await ensureBidRoundSafe(c.env.DB);
+  const winnings = (await c.env.DB.prepare(
+    `SELECT w.id, w.finalPrice, w.drawnAt, w.shippingStatus, w.bidId,
+            p.title, p.imageUrl, p.marketPrice
+     FROM winners w JOIN products p ON p.id = w.productId
+     WHERE w.userId = ? ORDER BY w.drawnAt DESC`
+  ).bind(uid2).all()).results;
+  const withdrawals = (await c.env.DB.prepare(
+    `SELECT id, amount, status, requestedAt, processedAt
+     FROM withdrawals WHERE userId = ? ORDER BY requestedAt DESC`
+  ).bind(uid2).all()).results;
+  const charges = (await c.env.DB.prepare(
+    `SELECT id, amount, depositor, status, requestedAt, processedAt
+     FROM charge_requests WHERE userId = ? ORDER BY requestedAt DESC`
+  ).bind(uid2).all()).results;
+  const pointHistory = (await c.env.DB.prepare(
+    `SELECT id, type, pointKind, amount, description, createdAt
+     FROM point_history WHERE userId = ? ORDER BY createdAt DESC`
+  ).bind(uid2).all()).results;
+  const summary = {
+    winCount: winnings.length,
+    winTotal: winnings.reduce((s, w) => s + Number(w.finalPrice || 0), 0),
+    withdrawCount: withdrawals.length,
+    withdrawTotal: withdrawals.filter((w) => w.status === "COMPLETED" || w.status === "APPROVED").reduce((s, w) => s + Number(w.amount || 0), 0),
+    chargeCount: charges.length,
+    chargeTotal: charges.filter((ch) => ch.status === "COMPLETED").reduce((s, ch) => s + Number(ch.amount || 0), 0)
+  };
+  return c.json({ member: m, winnings, withdrawals, charges, pointHistory, summary });
 });
 admin.put("/members/:id", async (c) => {
   const id = c.req.param("id");
