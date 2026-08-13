@@ -1,4 +1,37 @@
 // ===== 관리자 페이지 =====
+
+// ===== Supabase Storage (상품 이미지 업로드) =====
+// 방안 A: 브라우저에서 anon 공개키로 Storage 에 직접 업로드 → 공개 URL 만 DB 에 저장.
+// anon key 는 노출돼도 안전하도록 설계된 공개키이며, 버킷 정책상 INSERT(업로드)만 허용됨.
+// 실패 시 기존 base64 방식으로 자동 폴백하므로 상품 등록/수정 흐름은 절대 막히지 않는다.
+const SUPA_STORAGE = {
+  url: 'https://nnhrnreiuugcafykgyif.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5uaHJucmVpdXVnY2FmeWtneWlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjIyNzMsImV4cCI6MjEwMjE5ODI3M30.eJJDsT4u1NiznBzaEf7R6Zajfio-XsqeYtskDbFczng',
+  bucket: 'product-images',
+}
+
+// 캔버스 blob → Supabase Storage 업로드 → 공개 URL 반환 (실패 시 throw)
+async function uploadImageToStorage(blob) {
+  const ext = (blob.type && blob.type.includes('png')) ? 'png' : 'jpg'
+  const rand = Math.random().toString(36).slice(2, 8)
+  const path = `products/${Date.now()}-${rand}.${ext}`
+  const res = await fetch(`${SUPA_STORAGE.url}/storage/v1/object/${SUPA_STORAGE.bucket}/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPA_STORAGE.anonKey,
+      Authorization: 'Bearer ' + SUPA_STORAGE.anonKey,
+      'Content-Type': blob.type || 'image/jpeg',
+      'x-upsert': 'false',
+    },
+    body: blob,
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error('Storage 업로드 실패 (' + res.status + ') ' + t)
+  }
+  return `${SUPA_STORAGE.url}/storage/v1/object/public/${SUPA_STORAGE.bucket}/${path}`
+}
+
 function adminGuard() {
   if (!Store.user) { requireLoginRedirect(); return false }
   if (Store.user.role !== 'ADMIN') { toast('관리자 권한이 필요합니다.', 'error'); Router.navigate('/'); return false }
@@ -281,7 +314,7 @@ async function pageAdminProductForm(params) {
     if (!mp || mp <= 0) { toast('시중가를 올바르게 입력해주세요.', 'warn'); return }
     if (!sp || sp <= 0) { toast('시작가를 올바르게 입력해주세요.', 'warn'); return }
     if (sp > mp) { toast('시작가는 시중가보다 클 수 없습니다.', 'warn'); return }
-    if (!payload.imageUrl) { toast('상품 상세 이미지를 업로드해주세요.', 'warn'); return }
+    if (!payload.imageUrl) { toast('상품 상세 이미지를 업로드해주세요. (업로드 중이면 잠시 후 다시 시도)', 'warn'); return }
     try {
       if (id) await api.put('/admin/products/' + id, payload)
       else await api.post('/admin/products', payload)
@@ -321,17 +354,34 @@ function handleProductImage(input) {
 
       const dataUrl = canvas.toDataURL('image/jpeg', QUALITY)
 
-      // hidden input에 저장 + 미리보기 갱신
-      document.getElementById('img-data').value = dataUrl
+      // 미리보기는 즉시 로컬(dataUrl)로 표시 — UI 반응성 유지
       const box = document.getElementById('img-preview-box')
       box.innerHTML = `<img id="img-preview" src="${dataUrl}" class="w-full h-full object-cover" />`
-
-      // 용량 표시
       const kb = Math.round((dataUrl.length * 3 / 4) / 1024)
       const info = document.getElementById('img-info')
-      const warn = kb > 300 ? ' <span class="text-amber-600">(권장 300KB 초과 — 더 작은 이미지를 권장)</span>' : ' <span class="text-green-600">✓ 최적화됨</span>'
-      info.innerHTML = `변환 결과: <b>800×800px · 약 ${kb}KB</b>${warn}<br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
-      toast('이미지가 800×800으로 변환되어 적용되었어요. ✅', 'success')
+
+      // 리사이즈된 결과를 Blob 으로 만들어 Supabase Storage 에 업로드.
+      // 성공하면 공개 URL 을, 실패하면 기존 base64 를 hidden input 에 저장(폴백).
+      canvas.toBlob(async (blob) => {
+        const imgDataEl = document.getElementById('img-data')
+        info.innerHTML = `변환 결과: <b>800×800px · 약 ${kb}KB</b> <span class="text-gray-400">· 업로드 중…</span>`
+        try {
+          if (!blob) throw new Error('blob 생성 실패')
+          const url = await uploadImageToStorage(blob)
+          // 폼이 그 사이 닫히지 않았는지 확인
+          const el = document.getElementById('img-data')
+          if (el) el.value = url
+          info.innerHTML = `변환 결과: <b>800×800px · 약 ${kb}KB</b> <span class="text-green-600">✓ 저장소 업로드 완료</span><br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
+          toast('이미지가 800×800으로 변환·업로드되었어요. ✅', 'success')
+        } catch (err) {
+          // 업로드 실패 → base64 로 폴백(기존 방식). 등록/수정은 그대로 진행 가능.
+          const el = document.getElementById('img-data')
+          if (el) el.value = dataUrl
+          const warn = kb > 300 ? ' <span class="text-amber-600">(권장 300KB 초과)</span>' : ''
+          info.innerHTML = `변환 결과: <b>800×800px · 약 ${kb}KB</b>${warn} <span class="text-amber-600">· 저장소 업로드 실패 → 기존 방식으로 저장됩니다</span><br/>다른 이미지로 교체하려면 다시 "파일 선택"을 누르세요.`
+          toast('이미지가 적용되었어요. (저장소 업로드는 실패해 기존 방식으로 저장) ✅', 'success')
+        }
+      }, 'image/jpeg', QUALITY)
     }
     img.onerror = () => toast('이미지를 읽을 수 없어요.', 'error')
     img.src = ev.target.result
