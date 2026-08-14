@@ -1656,10 +1656,13 @@ async function pageAdminShipments(params, query) {
             </div>` : `<div class="text-xs text-red-400 mt-2">회원이 아직 배송정보를 입력하지 않았습니다.</div>`}
           </div>
         </div>
-        ${hasAddr ? `<div class="flex gap-2 mt-3 justify-end">
+        <div class="flex gap-2 mt-3 justify-end">
+          ${(s.shippingStatus === 'PENDING' || s.shippingStatus === 'SUBMITTED')
+            ? `<button onclick='openAdminShipping(${JSON.stringify(s).replace(/'/g, "&#39;")})' class="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-200"><i class="fas fa-pen mr-1"></i>${hasAddr ? '주소 수정' : '주소 입력'}</button>`
+            : ''}
           ${s.shippingStatus === 'SUBMITTED' ? `<button onclick="setShipStatus('${s.id}','SHIPPED')" class="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold">🚚 발송 처리</button>` : ''}
           ${s.shippingStatus === 'SHIPPED' ? `<button onclick="setShipStatus('${s.id}','DELIVERED')" class="bg-brand-dark text-white px-4 py-2 rounded-xl text-sm font-bold">✅ 배송완료</button>` : ''}
-        </div>` : ''}
+        </div>
       </div>`
     }).join('') : '<p class="text-center text-gray-400 py-10">조건에 맞는 배송 건이 없습니다.</p>'}
     </div>`)
@@ -1677,6 +1680,87 @@ function applyShipFilter() {
   Router.navigate('/admin/shipments' + (qs.toString() ? '?' + qs.toString() : ''))
 }
 function resetShipFilter() { Router.navigate('/admin/shipments') }
+
+// 관리자가 대신 배송지 주소 입력/수정 (전화로 받은 경우 등)
+function openAdminShipping(s) {
+  openModal(`
+    <div class="p-7 sm:p-9">
+      <div class="text-center mb-6">
+        <div class="text-4xl mb-2">📦</div>
+        <h3 class="text-xl font-extrabold">배송지 주소 입력 (관리자)</h3>
+        <p class="text-sm text-gray-500 mt-1 truncate">${s.title}</p>
+        <p class="text-xs text-gray-400 mt-0.5">${s.memberName || '-'}(@${s.nickname || '-'})</p>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 flex gap-2">
+        <i class="fas fa-circle-info text-amber-500 text-sm mt-0.5"></i>
+        <p class="text-xs text-amber-700 leading-relaxed">회원 대신 관리자가 배송지를 입력합니다. 저장하면 <b>배송정보 입력완료</b> 상태가 되어 발송 처리를 할 수 있습니다.</p>
+      </div>
+
+      <form id="admin-shipping-form" class="space-y-4 text-left">
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">받는 분 *</label>
+            <input name="recipientName" value="${s.recipientName || s.memberName || ''}" required
+              class="w-full px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100" /></div>
+          <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">연락처 *</label>
+            <input name="recipientPhone" value="${s.recipientPhone || s.memberPhone || ''}" required placeholder="010-0000-0000"
+              class="w-full px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100" /></div>
+        </div>
+        <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">우편번호</label>
+          <div class="flex gap-2">
+            <input name="postalCode" id="adm-ship-postal" value="${s.postalCode || ''}" readonly placeholder="주소검색을 눌러주세요"
+              class="flex-1 px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none bg-gray-50" />
+            <button type="button" onclick="searchAdminAddress()" class="shrink-0 bg-brand-dark text-white font-bold px-4 py-3 rounded-xl text-sm whitespace-nowrap hover:bg-black"><i class="fas fa-magnifying-glass mr-1"></i> 주소검색</button>
+          </div></div>
+        <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">주소 *</label>
+          <input name="address1" id="adm-ship-addr1" value="${s.address1 || ''}" required readonly placeholder="주소검색으로 자동 입력됩니다"
+            class="w-full px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none bg-gray-50" /></div>
+        <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">상세 주소</label>
+          <input name="address2" id="adm-ship-addr2" value="${s.address2 || ''}" placeholder="101동 1004호 (직접 입력)"
+            class="w-full px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100" /></div>
+        <div><label class="block text-sm font-semibold mb-1.5 text-gray-700">배송 메모</label>
+          <textarea name="deliveryMemo" rows="2" placeholder="부재 시 경비실에 맡겨 주세요."
+            class="w-full px-3.5 py-3 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 resize-none">${s.deliveryMemo || ''}</textarea></div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3.5 text-base rounded-xl hover:bg-gray-200">취소</button>
+          <button type="submit" class="flex-1 bg-brand-orange text-white font-bold py-3.5 text-base rounded-xl hover:bg-orange-600">주소 저장</button>
+        </div>
+      </form>
+    </div>
+  `, { maxWidth: 'max-w-lg' })
+
+  document.getElementById('admin-shipping-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const payload = Object.fromEntries(new FormData(e.target).entries())
+    if (!payload.address1) { toast('주소검색으로 주소를 입력해주세요.', 'warn'); return }
+    try {
+      await api.post(`/admin/shipments/${s.id}/shipping`, payload)
+      closeModal()
+      toast('배송지 주소가 저장되었어요! 📦', 'success')
+      Router.navigate('/admin/shipments' + (location.hash.split('?')[1] ? '?' + location.hash.split('?')[1] : ''))
+      if (typeof pageAdminShipments === 'function') pageAdminShipments({}, getQuery())
+    } catch (err) { toast(errMsg(err), 'error') }
+  })
+}
+
+// 관리자 주소검색 (카카오 우편번호) — openAdminShipping 전용 필드에 채움
+function searchAdminAddress() {
+  if (typeof daum === 'undefined' || !daum.Postcode) {
+    toast('주소검색 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.', 'error'); return
+  }
+  new daum.Postcode({
+    oncomplete: function (data) {
+      const addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress
+      const postalEl = document.getElementById('adm-ship-postal')
+      const addr1El = document.getElementById('adm-ship-addr1')
+      const addr2El = document.getElementById('adm-ship-addr2')
+      if (postalEl) postalEl.value = data.zonecode || ''
+      if (addr1El) addr1El.value = addr || ''
+      if (addr2El) addr2El.focus()
+    },
+  }).open()
+}
 
 // 배송정보를 엑셀 붙여넣기용 TSV(탭 구분)로 클립보드에 복사
 async function copyShipmentsExcel() {

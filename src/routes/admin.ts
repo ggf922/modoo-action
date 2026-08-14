@@ -764,6 +764,39 @@ admin.post('/shipments/:id/status', async (c) => {
   return c.json({ ok: true, status })
 })
 
+// 관리자가 대신 배송지 주소 입력/수정 (전화로 받은 경우 등)
+// 회원용 /me/winners/:id/shipping 과 동일하게 winners 행을 갱신하되, 소유자 확인 없이 관리자 권한으로 처리.
+admin.post('/shipments/:id/shipping', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => null)
+  const recipientName = String(body?.recipientName ?? '').trim()
+  const recipientPhone = String(body?.recipientPhone ?? '').trim()
+  const postalCode = String(body?.postalCode ?? '').trim()
+  const address1 = String(body?.address1 ?? '').trim()
+  const address2 = String(body?.address2 ?? '').trim()
+  const deliveryMemo = body?.deliveryMemo ? String(body.deliveryMemo).trim() : null
+
+  if (!recipientName) return c.json({ error: '받는 분 이름을 입력해주세요.' }, 400)
+  if (!recipientPhone) return c.json({ error: '연락처를 입력해주세요.' }, 400)
+  if (!address1) return c.json({ error: '주소를 입력해주세요.' }, 400)
+
+  const w = await c.env.DB.prepare('SELECT * FROM winners WHERE id = ?').bind(id).first<any>()
+  if (!w) return c.json({ error: '당첨 내역을 찾을 수 없습니다.' }, 404)
+  // 이미 발송/배송완료된 건은 주소 변경 불가 (배송상태는 유지)
+  if (w.shippingStatus === 'SHIPPED' || w.shippingStatus === 'DELIVERED') {
+    return c.json({ error: '이미 발송 처리된 주문은 주소를 수정할 수 없습니다.' }, 400)
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE winners
+     SET recipientName = ?, recipientPhone = ?, postalCode = ?, address1 = ?, address2 = ?,
+         deliveryMemo = ?, shippingStatus = 'SUBMITTED', shippingSubmittedAt = datetime('now')
+     WHERE id = ?`
+  ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, id).run()
+
+  return c.json({ ok: true })
+})
+
 // ===== 출금 관리 =====
 admin.get('/withdrawals', async (c) => {
   const rows = (await c.env.DB.prepare(

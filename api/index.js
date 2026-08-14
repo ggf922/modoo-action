@@ -10138,6 +10138,31 @@ admin.post("/shipments/:id/status", async (c) => {
   await c.env.DB.prepare("UPDATE winners SET shippingStatus = ? WHERE id = ?").bind(status, id).run();
   return c.json({ ok: true, status });
 });
+admin.post("/shipments/:id/shipping", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const recipientName = String(body?.recipientName ?? "").trim();
+  const recipientPhone = String(body?.recipientPhone ?? "").trim();
+  const postalCode = String(body?.postalCode ?? "").trim();
+  const address1 = String(body?.address1 ?? "").trim();
+  const address2 = String(body?.address2 ?? "").trim();
+  const deliveryMemo = body?.deliveryMemo ? String(body.deliveryMemo).trim() : null;
+  if (!recipientName) return c.json({ error: "\uBC1B\uB294 \uBD84 \uC774\uB984\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  if (!recipientPhone) return c.json({ error: "\uC5F0\uB77D\uCC98\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  if (!address1) return c.json({ error: "\uC8FC\uC18C\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const w = await c.env.DB.prepare("SELECT * FROM winners WHERE id = ?").bind(id).first();
+  if (!w) return c.json({ error: "\uB2F9\uCCA8 \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (w.shippingStatus === "SHIPPED" || w.shippingStatus === "DELIVERED") {
+    return c.json({ error: "\uC774\uBBF8 \uBC1C\uC1A1 \uCC98\uB9AC\uB41C \uC8FC\uBB38\uC740 \uC8FC\uC18C\uB97C \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  }
+  await c.env.DB.prepare(
+    `UPDATE winners
+     SET recipientName = ?, recipientPhone = ?, postalCode = ?, address1 = ?, address2 = ?,
+         deliveryMemo = ?, shippingStatus = 'SUBMITTED', shippingSubmittedAt = datetime('now')
+     WHERE id = ?`
+  ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, id).run();
+  return c.json({ ok: true });
+});
 admin.get("/withdrawals", async (c) => {
   const rows = (await c.env.DB.prepare(
     `SELECT w.*, u.name, u.nickname, u.email, u.bankName, u.bankAccount, u.accountHolder,
