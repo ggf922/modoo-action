@@ -1233,7 +1233,10 @@ async function pageAdminWithdrawals() {
       <div class="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap items-center gap-3 justify-between">
         <div>
           <div class="font-bold">${won(w.amount)}P 출금 ${badge(w.status)}</div>
-          <div class="text-xs text-gray-400 mt-0.5">${w.name}(@${w.nickname}) · ${w.bankName||'-'} ${w.bankAccount||''} (${w.accountHolder||'-'})</div>
+          <div class="text-xs text-gray-400 mt-0.5">${w.name}(@${w.nickname})</div>
+          ${(w.bankName && w.bankAccount)
+            ? `<div class="text-xs text-gray-600 mt-0.5"><i class="fas fa-building-columns text-gray-400 mr-1"></i><b>${w.bankName}</b> ${w.bankAccount} <span class="text-gray-400">(${w.accountHolder||'-'})</span> <button onclick="copyToClipboard('${(w.bankAccount||'').replace(/[-\s]/g,'')}');toast('계좌번호가 복사되었어요! 📋','success')" class="text-brand-orange ml-1"><i class="fas fa-copy"></i></button></div>`
+            : `<div class="text-xs text-red-500 mt-0.5"><i class="fas fa-triangle-exclamation mr-1"></i>계좌 미등록 — 회원에게 계좌 등록을 요청하세요.</div>`}
           <div class="text-xs text-gray-300">신청 ${fmtDateTime(w.requestedAt)} · 보유 경매P ${won(w.auctionPoint)}</div>
         </div>
         ${w.status==='PENDING' ? `<div class="flex gap-2">

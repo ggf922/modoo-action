@@ -6,7 +6,7 @@ import { requireAdmin } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
-import { ensureSubscriptionSchema, extendOneMonth } from './me'
+import { ensureSubscriptionSchema, extendOneMonth, ensureWithdrawalAccountColumns } from './me'
 import { ensureProductUrlColumn, ensureBuyNowPriceColumn } from './products'
 import { ensureMemberFlags, maybePayReferralReward } from '../lib/referral'
 
@@ -799,9 +799,16 @@ admin.post('/shipments/:id/shipping', async (c) => {
 
 // ===== 출금 관리 =====
 admin.get('/withdrawals', async (c) => {
+  // 신청 시점 계좌 스냅샷 컬럼 보장 (없으면 조회에서 에러날 수 있으므로 먼저 생성)
+  await ensureWithdrawalAccountColumns(c.env.DB)
+  // 계좌 표시는 "신청건에 저장된 스냅샷 우선, 없으면 회원의 현재 계좌" 순으로 사용.
+  //   (기존 신청건은 스냅샷이 비어 있으므로 users 계좌로 폴백 → 호환 유지)
   const rows = (await c.env.DB.prepare(
-    `SELECT w.*, u.name, u.nickname, u.email, u.bankName, u.bankAccount, u.accountHolder,
-            u.auctionPoint
+    `SELECT w.id, w.userId, w.amount, w.status, w.requestedAt, w.processedAt,
+            u.name, u.nickname, u.email, u.auctionPoint,
+            COALESCE(NULLIF(w.bankName, ''), u.bankName)           AS bankName,
+            COALESCE(NULLIF(w.bankAccount, ''), u.bankAccount)     AS bankAccount,
+            COALESCE(NULLIF(w.accountHolder, ''), u.accountHolder) AS accountHolder
      FROM withdrawals w JOIN users u ON u.id = w.userId
      ORDER BY CASE w.status WHEN 'PENDING' THEN 0 ELSE 1 END, w.requestedAt DESC`
   ).all()).results

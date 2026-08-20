@@ -149,11 +149,19 @@ me.post('/withdraw', async (c) => {
   // 출금 계좌 등록 여부와 무관하게 출금 신청을 허용한다.
   //   (계좌 정보는 관리자 처리 시 참고용이며, 미등록이어도 신청 가능)
 
+  // 신청 시점의 계좌 정보를 withdrawals 에 함께 저장(스냅샷).
+  //   → 이후 회원이 계좌를 바꿔도 신청 당시 계좌가 정확히 남고,
+  //     관리자 화면에서 users 계좌가 비어도 신청건 자체의 계좌를 표시할 수 있다.
+  await ensureWithdrawalAccountColumns(c.env.DB)
+
   // PENDING 신청만 생성 (실제 차감은 관리자 승인 시)
   await c.env.DB.prepare(
-    `INSERT INTO withdrawals (id, userId, amount, status, requestedAt)
-     VALUES (?, ?, ?, 'PENDING', datetime('now'))`
-  ).bind(genId('wd-'), user.id, amount).run()
+    `INSERT INTO withdrawals (id, userId, amount, status, requestedAt, bankName, bankAccount, accountHolder)
+     VALUES (?, ?, ?, 'PENDING', datetime('now'), ?, ?, ?)`
+  ).bind(
+    genId('wd-'), user.id, amount,
+    dbUser.bankName || null, dbUser.bankAccount || null, dbUser.accountHolder || null
+  ).run()
 
   return c.json({ ok: true, amount })
 })
@@ -183,6 +191,17 @@ me.post('/bank', async (c) => {
 
 // ===== 월 구독료 납부 =====
 const SUBSCRIPTION_FEE = 10000 // 월 구독료(경매 포인트)
+
+// withdrawals 에 신청 시점 계좌 스냅샷 컬럼을 lazy-ALTER 로 보장.
+//   (schema.sql 은 옛 스냅샷이라 컬럼이 없을 수 있음 → 런타임에 멱등 추가)
+let _wdAccountReady = false
+export async function ensureWithdrawalAccountColumns(DB: any) {
+  if (_wdAccountReady) return
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS bankName TEXT`).run()
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS bankAccount TEXT`).run()
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS accountHolder TEXT`).run()
+  _wdAccountReady = true
+}
 
 // 구독 스키마 자동 보장 (production Supabase에 수동 마이그레이션 없이 안전하게 적용)
 // PostgreSQL의 IF NOT EXISTS 로 멱등 보장. 콜드스타트 간 1회만 시도.

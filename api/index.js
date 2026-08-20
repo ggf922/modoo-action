@@ -9321,10 +9321,18 @@ me.post("/withdraw", async (c) => {
   if (amount > withdrawable) {
     return c.json({ error: `\uCD9C\uAE08 \uAC00\uB2A5 \uACBD\uB9E4\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uAC00\uB2A5: ${withdrawable.toLocaleString()}P)` }, 400);
   }
+  await ensureWithdrawalAccountColumns(c.env.DB);
   await c.env.DB.prepare(
-    `INSERT INTO withdrawals (id, userId, amount, status, requestedAt)
-     VALUES (?, ?, ?, 'PENDING', datetime('now'))`
-  ).bind(genId("wd-"), user.id, amount).run();
+    `INSERT INTO withdrawals (id, userId, amount, status, requestedAt, bankName, bankAccount, accountHolder)
+     VALUES (?, ?, ?, 'PENDING', datetime('now'), ?, ?, ?)`
+  ).bind(
+    genId("wd-"),
+    user.id,
+    amount,
+    dbUser.bankName || null,
+    dbUser.bankAccount || null,
+    dbUser.accountHolder || null
+  ).run();
   return c.json({ ok: true, amount });
 });
 me.get("/withdrawals", async (c) => {
@@ -9347,6 +9355,14 @@ me.post("/bank", async (c) => {
   return c.json({ ok: true });
 });
 var SUBSCRIPTION_FEE = 1e4;
+var _wdAccountReady = false;
+async function ensureWithdrawalAccountColumns(DB) {
+  if (_wdAccountReady) return;
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS bankName TEXT`).run();
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS bankAccount TEXT`).run();
+  await DB.prepare(`ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS accountHolder TEXT`).run();
+  _wdAccountReady = true;
+}
 var _subSchemaReady = false;
 async function ensureSubscriptionSchema(DB) {
   if (_subSchemaReady) return;
@@ -10164,9 +10180,13 @@ admin.post("/shipments/:id/shipping", async (c) => {
   return c.json({ ok: true });
 });
 admin.get("/withdrawals", async (c) => {
+  await ensureWithdrawalAccountColumns(c.env.DB);
   const rows = (await c.env.DB.prepare(
-    `SELECT w.*, u.name, u.nickname, u.email, u.bankName, u.bankAccount, u.accountHolder,
-            u.auctionPoint
+    `SELECT w.id, w.userId, w.amount, w.status, w.requestedAt, w.processedAt,
+            u.name, u.nickname, u.email, u.auctionPoint,
+            COALESCE(NULLIF(w.bankName, ''), u.bankName)           AS bankName,
+            COALESCE(NULLIF(w.bankAccount, ''), u.bankAccount)     AS bankAccount,
+            COALESCE(NULLIF(w.accountHolder, ''), u.accountHolder) AS accountHolder
      FROM withdrawals w JOIN users u ON u.id = w.userId
      ORDER BY CASE w.status WHEN 'PENDING' THEN 0 ELSE 1 END, w.requestedAt DESC`
   ).all()).results;
