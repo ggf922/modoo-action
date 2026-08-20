@@ -9310,6 +9310,12 @@ me.post("/withdraw", async (c) => {
   const body = await c.req.json().catch(() => null);
   const amount = Number(body?.amount);
   if (!amount || amount <= 0) return c.json({ error: "\uCD9C\uAE08 \uAE08\uC561\uC744 \uC62C\uBC14\uB974\uAC8C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const bankName = String(body?.bankName ?? "").trim();
+  const bankAccount = String(body?.bankAccount ?? "").trim();
+  const accountHolder = String(body?.accountHolder ?? "").trim();
+  if (!bankName || !bankAccount || !accountHolder) {
+    return c.json({ error: "\uCD9C\uAE08 \uACC4\uC88C \uC815\uBCF4(\uC740\uD589\xB7\uACC4\uC88C\uBC88\uD638\xB7\uC608\uAE08\uC8FC)\uB97C \uBAA8\uB450 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  }
   const dbUser = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
   if (!dbUser) return c.json({ error: "\uC0AC\uC6A9\uC790 \uC815\uBCF4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   const config = await c.env.DB.prepare("SELECT minWithdrawAmount FROM site_config LIMIT 1").first();
@@ -9323,16 +9329,12 @@ me.post("/withdraw", async (c) => {
   }
   await ensureWithdrawalAccountColumns(c.env.DB);
   await c.env.DB.prepare(
+    `UPDATE users SET bankName = ?, bankAccount = ?, accountHolder = ?, updatedAt = datetime('now') WHERE id = ?`
+  ).bind(bankName, bankAccount, accountHolder, user.id).run();
+  await c.env.DB.prepare(
     `INSERT INTO withdrawals (id, userId, amount, status, requestedAt, bankName, bankAccount, accountHolder)
      VALUES (?, ?, ?, 'PENDING', datetime('now'), ?, ?, ?)`
-  ).bind(
-    genId("wd-"),
-    user.id,
-    amount,
-    dbUser.bankName || null,
-    dbUser.bankAccount || null,
-    dbUser.accountHolder || null
-  ).run();
+  ).bind(genId("wd-"), user.id, amount, bankName, bankAccount, accountHolder).run();
   return c.json({ ok: true, amount });
 });
 me.get("/withdrawals", async (c) => {

@@ -131,6 +131,15 @@ me.post('/withdraw', async (c) => {
   const amount = Number(body?.amount)
   if (!amount || amount <= 0) return c.json({ error: '출금 금액을 올바르게 입력해주세요.' }, 400)
 
+  // 출금 신청 시 계좌 정보를 필수로 입력받는다. (관리자가 송금할 계좌를 항상 확보)
+  //   프론트에서 함께 전송하며, 미입력이면 신청을 거부한다.
+  const bankName = String(body?.bankName ?? '').trim()
+  const bankAccount = String(body?.bankAccount ?? '').trim()
+  const accountHolder = String(body?.accountHolder ?? '').trim()
+  if (!bankName || !bankAccount || !accountHolder) {
+    return c.json({ error: '출금 계좌 정보(은행·계좌번호·예금주)를 모두 입력해주세요.' }, 400)
+  }
+
   const dbUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first<UserRow>()
   if (!dbUser) return c.json({ error: '사용자 정보를 찾을 수 없습니다.' }, 404)
 
@@ -146,22 +155,20 @@ me.post('/withdraw', async (c) => {
     return c.json({ error: `출금 가능 경매포인트가 부족합니다. (가능: ${withdrawable.toLocaleString()}P)` }, 400)
   }
 
-  // 출금 계좌 등록 여부와 무관하게 출금 신청을 허용한다.
-  //   (계좌 정보는 관리자 처리 시 참고용이며, 미등록이어도 신청 가능)
-
-  // 신청 시점의 계좌 정보를 withdrawals 에 함께 저장(스냅샷).
-  //   → 이후 회원이 계좌를 바꿔도 신청 당시 계좌가 정확히 남고,
-  //     관리자 화면에서 users 계좌가 비어도 신청건 자체의 계좌를 표시할 수 있다.
   await ensureWithdrawalAccountColumns(c.env.DB)
 
+  // 1) 회원 프로필의 계좌 정보를 최신값으로 갱신 (다음 신청·표시에 재사용)
+  await c.env.DB.prepare(
+    `UPDATE users SET bankName = ?, bankAccount = ?, accountHolder = ?, updatedAt = datetime('now') WHERE id = ?`
+  ).bind(bankName, bankAccount, accountHolder, user.id).run()
+
+  // 2) 신청 시점의 계좌 정보를 withdrawals 에 스냅샷 저장.
+  //    → 이후 회원이 계좌를 바꿔도 신청 당시 계좌가 정확히 남는다.
   // PENDING 신청만 생성 (실제 차감은 관리자 승인 시)
   await c.env.DB.prepare(
     `INSERT INTO withdrawals (id, userId, amount, status, requestedAt, bankName, bankAccount, accountHolder)
      VALUES (?, ?, ?, 'PENDING', datetime('now'), ?, ?, ?)`
-  ).bind(
-    genId('wd-'), user.id, amount,
-    dbUser.bankName || null, dbUser.bankAccount || null, dbUser.accountHolder || null
-  ).run()
+  ).bind(genId('wd-'), user.id, amount, bankName, bankAccount, accountHolder).run()
 
   return c.json({ ok: true, amount })
 })

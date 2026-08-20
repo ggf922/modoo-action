@@ -663,13 +663,13 @@ async function pageWithdraw() {
       <p class="text-sm text-gray-400 mb-4">출금 가능 경매포인트: <b class="text-green-600">${won(withdrawable)}P</b> <span class="text-xs">(${won(min)}P 이상 출금 가능)</span></p>
 
       <div class="mb-4">
-        <div class="text-sm font-medium mb-2">출금 계좌 ${hasAccount ? '<span class="text-green-600 text-xs">✓ 등록됨</span>' : '<span class="text-red-500 text-xs">미등록</span>'}</div>
+        <div class="text-sm font-medium mb-2">출금 계좌 <span class="text-red-500">*</span> ${hasAccount ? '<span class="text-green-600 text-xs">✓ 등록됨</span>' : '<span class="text-red-500 text-xs">미등록</span>'}</div>
         <div class="grid grid-cols-3 gap-2">
           <input id="bankName" value="${u.bankName||''}" placeholder="은행" class="px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
           <input id="bankAccount" value="${u.bankAccount||''}" placeholder="계좌번호" class="col-span-2 px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
         </div>
         <input id="accountHolder" value="${u.accountHolder||''}" placeholder="예금주" class="w-full mt-2 px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-brand-orange" />
-        <button onclick="saveBank()" class="mt-2 text-xs text-brand-orange font-medium">계좌 정보 저장</button>
+        <p class="text-xs text-gray-400 mt-1.5"><i class="fas fa-circle-info"></i> 출금 신청 시 계좌 정보가 함께 저장됩니다. (미입력 시 신청 불가)</p>
       </div>
 
       <label class="block text-sm font-medium mb-1">출금 금액 <span class="text-gray-400 font-normal">(최소 ${won(min)}P)</span></label>
@@ -699,9 +699,22 @@ async function saveBank() {
 }
 async function doWithdraw() {
   const amount = Number(document.getElementById('withdraw-amount').value)
+  // 출금 신청 시 계좌 정보도 함께 입력받아 검증 (미입력 시 신청 불가 → 관리자가 송금할 계좌를 항상 확보)
+  const bankName = (document.getElementById('bankName').value || '').trim()
+  const bankAccount = (document.getElementById('bankAccount').value || '').trim()
+  const accountHolder = (document.getElementById('accountHolder').value || '').trim()
+  if (!bankName || !bankAccount || !accountHolder) {
+    toast('출금 계좌 정보(은행·계좌번호·예금주)를 모두 입력해주세요.', 'warn')
+    // 비어있는 첫 입력란으로 포커스 이동
+    const emptyEl = !bankName ? 'bankName' : (!bankAccount ? 'bankAccount' : 'accountHolder')
+    const el = document.getElementById(emptyEl); if (el) el.focus()
+    return
+  }
   if (!amount) { toast('출금 금액을 입력해주세요.', 'warn'); return }
   try {
-    await api.post('/me/withdraw', { amount })
+    // 계좌 정보를 함께 전송 → 서버가 회원 프로필 갱신 + 신청건에 스냅샷 저장
+    await api.post('/me/withdraw', { amount, bankName, bankAccount, accountHolder })
+    await Store.loadMe()
     toast('출금 신청이 접수되었어요! 관리자 승인 후 처리됩니다.', 'success')
     pageWithdraw()
   } catch (err) { toast(errMsg(err), 'error') }
