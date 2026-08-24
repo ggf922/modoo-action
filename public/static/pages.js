@@ -62,7 +62,41 @@ async function pageHome() {
     </a>
   </section>`
 
-  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner)
+  // 건강 100세 배너 (PawType-16 배너 바로 아래) — 클릭 시 healthkeeper.shop 으로 이동
+  const healthBanner = `
+  <section id="health-banner" class="mt-6">
+    <a href="https://www.healthkeeper.shop/" target="_blank" rel="noopener noreferrer"
+       class="block rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer"
+       style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 45%, #6366f1 100%);">
+      <div class="relative px-6 py-7 sm:px-10 sm:py-9 text-white">
+        <div class="flex items-center gap-4 sm:gap-6">
+          <div class="shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center text-3xl sm:text-4xl shadow-inner">
+            💊
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold mb-2">
+              <i class="fas fa-gift"></i> 모두모두 회원 무료 이용
+            </div>
+            <h3 class="text-xl sm:text-2xl font-extrabold leading-tight">건강 100세 <span class="opacity-90 text-base sm:text-lg font-bold">🌿</span></h3>
+            <p class="text-white/85 text-sm sm:text-base font-medium mt-0.5">나만의 맞춤형 건강식품 추천 서비스</p>
+            <p class="text-white/70 text-xs sm:text-sm mt-1.5"><i class="fas fa-check-circle mr-1"></i> <b>모두모두 회원</b>은 <b class="text-yellow-200">무료</b>로 건강 체크를 시작할 수 있어요!</p>
+          </div>
+          <div class="shrink-0 hidden sm:flex items-center">
+            <span class="inline-flex items-center gap-2 bg-white text-purple-700 font-extrabold px-5 py-3 rounded-full shadow-md">
+              무료로 시작 <i class="fas fa-arrow-right"></i>
+            </span>
+          </div>
+        </div>
+        <div class="mt-4 sm:hidden">
+          <span class="inline-flex items-center gap-2 bg-white text-purple-700 font-extrabold px-5 py-2.5 rounded-full shadow-md text-sm w-full justify-center">
+            무료로 시작 <i class="fas fa-arrow-right"></i>
+          </span>
+        </div>
+      </div>
+    </a>
+  </section>`
+
+  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner + healthBanner)
 }
 
 // 로그인
