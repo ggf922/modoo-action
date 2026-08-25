@@ -75,6 +75,35 @@ export async function maybePromoteToVVIP(DB: any, referrerId: string | null): Pr
 }
 
 /**
+ * 전체 회원을 스캔하여 "직속 VIP 이상 5명" 조건을 충족한 회원(NORMAL/VIP)을 일괄 VVIP 로 승급한다.
+ * - 기존 회원에게 소급 적용할 때 사용한다(관리자 재계산 버튼).
+ * - 이미 VVIP 이상(AGENCY 등)인 회원은 대상에서 제외(유지).
+ * @returns 이번 실행으로 새로 승급된 회원 수
+ */
+export async function recalcVVIP(DB: any): Promise<number> {
+  // 직속 VIP 이상 5명 조건을 충족하면서 아직 NORMAL/VIP 인 회원 목록을 한 번에 조회
+  const rows = (await DB.prepare(
+    `SELECT ref.id AS id
+       FROM users ref
+       JOIN users child ON child.referrerId = ref.id
+      WHERE ref.grade IN ('NORMAL', 'VIP')
+        AND child.grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR')
+      GROUP BY ref.id
+     HAVING COUNT(child.id) >= ${VVIP_DIRECT_VIP_THRESHOLD}`
+  ).all<{ id: string }>()).results
+
+  if (!rows.length) return 0
+
+  for (const r of rows) {
+    await DB.prepare(
+      `UPDATE users SET grade = 'VVIP', updatedAt = datetime('now')
+        WHERE id = ? AND grade IN ('NORMAL', 'VIP')`
+    ).bind(r.id).run()
+  }
+  return rows.length
+}
+
+/**
  * 피추천자(memberId)가 "VIP 이상 + 활성" 상태가 됐을 때, 추천인에게 추천 보상을 단 1회만 지급한다.
  * - 이미 지급된 적이 있으면(referralRewardPaid=1) 아무 것도 하지 않는다(구독 반복·재승급에도 재지급 없음).
  * - 추천인이 없거나, 조건 미충족이면 지급하지 않는다.

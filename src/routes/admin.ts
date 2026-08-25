@@ -8,7 +8,7 @@ import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth, ensureWithdrawalAccountColumns } from './me'
 import { ensureProductUrlColumn, ensureBuyNowPriceColumn } from './products'
-import { ensureMemberFlags, maybePayReferralReward, maybePromoteToVVIP } from '../lib/referral'
+import { ensureMemberFlags, maybePayReferralReward, maybePromoteToVVIP, recalcVVIP } from '../lib/referral'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -361,6 +361,13 @@ admin.post('/members/grade-grant', async (c) => {
   }
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, count: targets.length, amount, grade })
+})
+
+// VVIP 자동 승급 재계산 (기존 회원 소급 적용)
+// "직속 VIP 이상 5명" 조건을 충족한 NORMAL/VIP 회원을 일괄 VVIP 로 승급한다.
+admin.post('/members/recalc-vvip', async (c) => {
+  const promoted = await recalcVVIP(c.env.DB)
+  return c.json({ ok: true, promoted })
 })
 
 // 등급별 회원 수 통계 (일괄 지급 화면용)

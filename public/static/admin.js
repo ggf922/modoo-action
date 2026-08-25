@@ -948,7 +948,10 @@ async function pageAdminGradeGrant() {
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-4">
-      <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">등급별 회원 수</div>
+      <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-wide">등급별 회원 수</div>
+        <button onclick="doRecalcVVIP()" class="bg-white border border-purple-500 text-purple-600 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap hover:bg-purple-50"><i class="fas fa-crown"></i> VVIP 자동 승급 반영</button>
+      </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
         ${GRADE_ORDER.map(g => `
           <div class="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
@@ -956,6 +959,7 @@ async function pageAdminGradeGrant() {
             <div class="font-extrabold text-gray-700">${stats[g] || 0}<span class="text-xs font-normal text-gray-400">명</span></div>
           </div>`).join('')}
       </div>
+      <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> VIP 이상 회원을 <b>5명 직접 추천</b>한 회원은 자동으로 VVIP가 됩니다. 기존 회원에게 반영하려면 위 버튼을 눌러주세요.</p>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 p-5">
@@ -979,6 +983,17 @@ async function pageAdminGradeGrant() {
       <button onclick="doGradeGrant()" class="w-full mt-4 bg-brand-orange text-white py-3 rounded-xl font-bold"><i class="fas fa-paper-plane"></i> 해당 등급 회원에게 일괄 지급</button>
       <p class="text-xs text-gray-400 mt-2 text-center">선택한 등급의 모든 회원에게 동일한 금액이 일괄 지급됩니다.</p>
     </div>`)
+}
+
+// VVIP 자동 승급 재계산 (기존 회원 소급 적용)
+async function doRecalcVVIP() {
+  if (!confirm('VIP 이상 회원을 5명 이상 직접 추천한 회원을 모두 VVIP로 자동 승급합니다.\n(이미 상위 등급인 회원은 유지됩니다.)\n\n진행하시겠습니까?')) return
+  try {
+    const { data } = await api.post('/admin/members/recalc-vvip', {})
+    if (data.promoted === 0) { toast('새로 VVIP로 승급된 회원이 없습니다. (조건 충족자 없음)', 'warn'); return }
+    toast(`${data.promoted}명이 VVIP로 자동 승급되었어요! 👑`, 'success')
+    pageAdminGradeGrant()
+  } catch (err) { toast(errMsg(err), 'error') }
 }
 
 async function doGradeGrant() {

@@ -9196,6 +9196,25 @@ async function maybePromoteToVVIP(DB, referrerId) {
   ).bind(referrerId).run();
   return true;
 }
+async function recalcVVIP(DB) {
+  const rows = (await DB.prepare(
+    `SELECT ref.id AS id
+       FROM users ref
+       JOIN users child ON child.referrerId = ref.id
+      WHERE ref.grade IN ('NORMAL', 'VIP')
+        AND child.grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR')
+      GROUP BY ref.id
+     HAVING COUNT(child.id) >= ${VVIP_DIRECT_VIP_THRESHOLD}`
+  ).all()).results;
+  if (!rows.length) return 0;
+  for (const r of rows) {
+    await DB.prepare(
+      `UPDATE users SET grade = 'VVIP', updatedAt = datetime('now')
+        WHERE id = ? AND grade IN ('NORMAL', 'VIP')`
+    ).bind(r.id).run();
+  }
+  return rows.length;
+}
 async function maybePayReferralReward(DB, memberId) {
   await ensureMemberFlags(DB);
   const m = await DB.prepare(
@@ -9850,6 +9869,10 @@ admin.post("/members/grade-grant", async (c) => {
   await c.env.DB.batch(stmts);
   return c.json({ ok: true, count: targets.length, amount, grade });
 });
+admin.post("/members/recalc-vvip", async (c) => {
+  const promoted = await recalcVVIP(c.env.DB);
+  return c.json({ ok: true, promoted });
+});
 admin.get("/members/grade-stats", async (c) => {
   const rows = (await c.env.DB.prepare(
     "SELECT grade, COUNT(*) AS cnt FROM users WHERE role = 'MEMBER' GROUP BY grade"
@@ -10404,15 +10427,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820b"></script>
-  <script src="/static/i18n.js?v=20260820b"></script>
-  <script src="/static/i18n-dict.js?v=20260820b"></script>
-  <script src="/static/components.js?v=20260820b"></script>
-  <script src="/static/pages.js?v=20260820b"></script>
-  <script src="/static/mypage.js?v=20260820b"></script>
-  <script src="/static/network.js?v=20260820b"></script>
-  <script src="/static/admin.js?v=20260820b"></script>
-  <script src="/static/app.js?v=20260820b"></script>
+  <script src="/static/api.js?v=20260820c"></script>
+  <script src="/static/i18n.js?v=20260820c"></script>
+  <script src="/static/i18n-dict.js?v=20260820c"></script>
+  <script src="/static/components.js?v=20260820c"></script>
+  <script src="/static/pages.js?v=20260820c"></script>
+  <script src="/static/mypage.js?v=20260820c"></script>
+  <script src="/static/network.js?v=20260820c"></script>
+  <script src="/static/admin.js?v=20260820c"></script>
+  <script src="/static/app.js?v=20260820c"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;
