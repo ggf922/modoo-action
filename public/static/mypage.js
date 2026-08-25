@@ -841,11 +841,9 @@ function openShipping(b) {
               class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 disabled:bg-gray-50" /></div>
         </div>
         <div><label class="block text-sm font-semibold mb-2 text-gray-700">우편번호</label>
-          <div class="flex gap-3">
-            <input name="postalCode" id="ship-postal" value="${b.postalCode || ''}" ${readonly?'disabled':''} readonly placeholder="주소검색을 눌러주세요"
-              class="flex-1 px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 bg-gray-50" />
-            ${readonly ? '' : `<button type="button" onclick="searchAddress()" class="shrink-0 bg-brand-dark text-white font-bold px-5 py-3.5 rounded-xl text-base whitespace-nowrap hover:bg-black"><i class="fas fa-magnifying-glass mr-1"></i> 주소검색</button>`}
-          </div></div>
+          <input name="postalCode" id="ship-postal" value="${b.postalCode || ''}" ${readonly?'disabled':''} readonly placeholder="주소검색을 눌러주세요"
+            class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 bg-gray-50" /></div>
+        ${readonly ? '' : `<button type="button" onclick="searchAddress()" class="w-full bg-brand-dark text-white font-bold px-5 py-3.5 rounded-xl text-base hover:bg-black"><i class="fas fa-magnifying-glass mr-1"></i> 주소검색</button>`}
         <div><label class="block text-sm font-semibold mb-2 text-gray-700">주소 *</label>
           <input name="address1" id="ship-addr1" value="${b.address1 || ''}" ${readonly?'disabled':''} required readonly placeholder="주소검색으로 자동 입력됩니다"
             class="w-full px-4 py-3.5 text-base rounded-xl border border-gray-200 outline-none focus:border-brand-orange focus:ring-2 focus:ring-orange-100 ${readonly?'disabled:bg-gray-50':'bg-gray-50'}" /></div>
