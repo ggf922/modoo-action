@@ -78,15 +78,30 @@ async function buyNow(productId, buyNowPrice) {
     return
   }
 
-  // 구매 확인 모달
+  // 구매 확인 모달 (수량 선택 가능) — 같은 상품을 여러 개 한 번에 구매 → 배송지 1회 입력으로 처리
+  // 수량에 따라 총액/잔액을 실시간 계산하기 위해 상태를 전역에 잠시 보관
+  window.__buyNow = { productId, unit: buyNowPrice, balance, qty: 1 }
   openModal(`<div class="p-7 text-center">
     <div class="text-5xl mb-3">🛒</div>
     <h3 class="text-lg font-extrabold mb-1">지금 바로 구매하시겠어요?</h3>
     <p class="text-sm text-gray-500 mb-4">경매에 참여하지 않고 즉시 구매합니다.</p>
+
+    <div class="mb-4">
+      <div class="text-sm font-semibold text-gray-700 mb-2 text-left">구매 개수</div>
+      <div class="flex items-center justify-center gap-3">
+        <button type="button" onclick="changeBuyQty(-1)" class="w-11 h-11 rounded-xl bg-gray-100 text-gray-700 text-xl font-bold hover:bg-gray-200 active:scale-95 transition"><i class="fas fa-minus"></i></button>
+        <input id="buy-qty" type="number" min="1" max="99" value="1" onchange="setBuyQty(this.value)" inputmode="numeric"
+          class="w-20 h-11 text-center text-xl font-extrabold rounded-xl border border-gray-200 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100" />
+        <button type="button" onclick="changeBuyQty(1)" class="w-11 h-11 rounded-xl bg-gray-100 text-gray-700 text-xl font-bold hover:bg-gray-200 active:scale-95 transition"><i class="fas fa-plus"></i></button>
+      </div>
+      <p class="text-xs text-gray-400 mt-2">같은 상품을 여러 개 구매하면 배송지는 <b>한 번만</b> 입력하면 돼요 🚚</p>
+    </div>
+
     <div class="bg-green-50 rounded-xl p-4 text-sm space-y-2 mb-5 text-left">
-      <div class="flex justify-between"><span class="text-gray-500">즉시구매가</span><b class="text-green-700">${won(buyNowPrice)}P</b></div>
+      <div class="flex justify-between"><span class="text-gray-500">즉시구매가</span><b class="text-green-700"><span id="buy-unit">${won(buyNowPrice)}</span>P <span id="buy-qty-label" class="text-gray-400 font-normal"></span></b></div>
       <div class="flex justify-between"><span class="text-gray-500">보유 포인트</span><b class="text-brand-dark">${won(balance)}P</b></div>
-      <div class="border-t border-green-200 pt-2 flex justify-between"><span class="text-gray-600 font-medium">구매 후 잔액</span><b class="text-brand-dark">${won(balance - buyNowPrice)}P</b></div>
+      <div class="border-t border-green-200 pt-2 flex justify-between"><span class="text-gray-600 font-medium">결제 금액</span><b class="text-green-700" id="buy-total">${won(buyNowPrice)}P</b></div>
+      <div class="flex justify-between"><span class="text-gray-600 font-medium">구매 후 잔액</span><b class="text-brand-dark" id="buy-remain">${won(balance - buyNowPrice)}P</b></div>
     </div>
     <div class="flex gap-2">
       <button onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">취소</button>
@@ -95,28 +110,65 @@ async function buyNow(productId, buyNowPrice) {
   </div>`)
 }
 
+// 구매 수량 증감 (+/- 버튼)
+function changeBuyQty(delta) {
+  const s = window.__buyNow; if (!s) return
+  setBuyQty(s.qty + delta)
+}
+// 구매 수량 설정 및 총액/잔액 UI 갱신
+function setBuyQty(val) {
+  const s = window.__buyNow; if (!s) return
+  let qty = Math.floor(Number(val))
+  if (!qty || isNaN(qty) || qty < 1) qty = 1
+  if (qty > 99) qty = 99
+  s.qty = qty
+  const total = s.unit * qty
+  const remain = s.balance - total
+  const input = document.getElementById('buy-qty'); if (input) input.value = qty
+  const qtyLabel = document.getElementById('buy-qty-label'); if (qtyLabel) qtyLabel.textContent = qty > 1 ? `× ${qty}개` : ''
+  const totalEl = document.getElementById('buy-total'); if (totalEl) totalEl.textContent = `${won(total)}P`
+  const remainEl = document.getElementById('buy-remain')
+  if (remainEl) {
+    remainEl.textContent = `${won(remain)}P`
+    remainEl.className = remain < 0 ? 'text-red-500' : 'text-brand-dark'
+  }
+}
+
 async function confirmBuyNow(productId) {
+  const qty = (window.__buyNow && window.__buyNow.qty) ? window.__buyNow.qty : 1
+  // 잔액 부족 시 서버로 보내기 전 즉시 안내
+  if (window.__buyNow && (window.__buyNow.balance < window.__buyNow.unit * qty)) {
+    toast('포인트가 부족합니다. 수량을 줄이거나 충전해주세요.', 'warn'); return
+  }
   openModal(`<div class="p-8 text-center">
     <div class="text-5xl mb-4" style="animation:spin360 1s ease infinite"><i class="fas fa-cart-shopping text-green-600"></i></div>
     <p class="font-bold">구매 처리 중...</p>
   </div>`, { dismissable: false })
 
   try {
-    const { data } = await api.post(`/products/${productId}/buy-now`)
+    const { data } = await api.post(`/products/${productId}/buy-now`, { qty })
     await Store.loadMe()
+    const boughtQty = data.qty || 1
+    const totalPrice = data.totalPrice || (data.buyNowPrice * boughtQty)
     const savedTxt = (data.marketPrice && data.buyNowPrice)
       ? `<p class="text-xs text-gray-400 mt-1">시중가 ${won(data.marketPrice)}원 대비 ${Math.round((1 - data.buyNowPrice / data.marketPrice) * 100)}% 절약!</p>`
       : ''
+    const qtyLine = boughtQty > 1
+      ? `<p class="text-sm text-gray-500">구매가 <b class="text-gray-700">${won(data.buyNowPrice)}P</b> × <b class="text-gray-700">${boughtQty}개</b></p>`
+      : `<p class="text-sm text-gray-500">구매가</p>`
+    const shipHint = boughtQty > 1
+      ? `<p class="text-sm text-gray-400 mb-4">마이페이지에서 배송지를 입력하면 <b>${boughtQty}건에 한 번에</b> 적용돼요 🚚</p>`
+      : `<p class="text-sm text-gray-400 mb-4">마이페이지에서 배송지를 입력해주세요 🚚</p>`
     openModal(`<div class="p-8 text-center">
       <div class="text-6xl mb-4 animate-pop">🎉</div>
       <h3 class="text-xl font-extrabold mb-2">구매 완료!</h3>
-      <p class="text-gray-700 font-medium mb-1">${data.title}</p>
+      <p class="text-gray-700 font-medium mb-1">${data.title}${boughtQty > 1 ? ` (${boughtQty}개)` : ''}</p>
       <div class="bg-green-50 rounded-xl p-4 my-4">
-        <p class="text-sm text-gray-500">구매가</p>
-        <p class="text-2xl font-extrabold text-green-700">${won(data.buyNowPrice)}P</p>
+        ${qtyLine}
+        <p class="text-2xl font-extrabold text-green-700">${won(totalPrice)}P</p>
         ${savedTxt}
       </div>
-      <p class="text-sm text-gray-400 mb-4">마이페이지에서 배송지를 입력해주세요 🚚</p>
+      ${shipHint}
       <div class="flex gap-2">
         <button onclick="closeModal();render()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200">확인</button>
         <button onclick="closeModal();Router.navigate('/mypage/bids')" class="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700">배송지 입력</button>
@@ -754,6 +806,7 @@ async function pageBids(params, query) {
   if (!Store.user) { requireLoginRedirect(); return }
   document.getElementById('app').innerHTML = renderLoading()
   const { data } = await api.get('/me/bids')
+  window.__myBids = data.bids  // 배송지 일괄 적용 시 같은 상품 미입력 건수 계산용
   const tab = query.tab || 'all'
   let bids = data.bids
   if (tab === 'win') bids = bids.filter(b => b.isWinner)
@@ -813,6 +866,17 @@ function openShipping(b) {
   const ss = b.shippingStatus || 'PENDING'
   const readonly = ss === 'SHIPPED' || ss === 'DELIVERED'
   const u = Store.user || {}
+
+  // 같은 상품(productId)의 배송 미입력(PENDING) 건 수 계산 → 여러 개면 "일괄 적용" 옵션 노출
+  //   (즉시구매로 같은 상품을 여러 개 주문한 경우 배송지 반복 입력을 없애기 위함)
+  const allBids = window.__myBids || []
+  const samePending = allBids.filter(x =>
+    x.productId === b.productId && x.winnerId &&
+    ((x.shippingStatus || 'PENDING') === 'PENDING')
+  )
+  // 현재 편집 건이 아직 미입력(PENDING)이고, 같은 상품 미입력 건이 2건 이상일 때만 노출
+  const sameCount = samePending.length
+  const showBulk = !readonly && ss === 'PENDING' && sameCount >= 2
   openModal(`
     <div class="p-7 sm:p-9">
       <div class="text-center mb-7">
@@ -856,7 +920,11 @@ function openShipping(b) {
 
         ${readonly
           ? `<div class="text-center text-sm text-gray-400 py-2"><i class="fas fa-lock mr-1"></i>이미 발송 처리되어 수정할 수 없습니다.</div>`
-          : `<label class="flex items-start gap-3 cursor-pointer bg-gray-50 rounded-xl p-4 mt-1">
+          : `${showBulk ? `<label class="flex items-start gap-3 cursor-pointer bg-green-50 border border-green-200 rounded-xl p-4 mt-1">
+              <input type="checkbox" id="ship-bulk" checked class="mt-0.5 w-5 h-5 accent-green-600 shrink-0" />
+              <span class="text-sm text-green-800 leading-relaxed"><i class="fas fa-boxes-stacked mr-1"></i> 같은 상품 <b>${sameCount}건</b>에 이 배송지를 <b>한 번에 적용</b>합니다. (매번 입력 안 해도 돼요!)</span>
+            </label>` : ''}
+            <label class="flex items-start gap-3 cursor-pointer bg-gray-50 rounded-xl p-4 mt-1">
               <input type="checkbox" id="ship-agree" class="mt-0.5 w-5 h-5 accent-brand-orange shrink-0" />
               <span class="text-sm text-gray-600 leading-relaxed"><b class="text-gray-800">[필수]</b> 위 <b class="text-red-500">반품 불가</b> 안내를 확인했으며, 배송 정보 제출에 동의합니다.</span>
             </label>
@@ -876,10 +944,14 @@ function openShipping(b) {
     }
     const fd = new FormData(e.target)
     const payload = Object.fromEntries(fd.entries())
+    // 같은 상품 일괄 적용 옵션(체크 시)
+    const bulkEl = document.getElementById('ship-bulk')
+    if (bulkEl && bulkEl.checked) payload.applyToSameProduct = true
     try {
-      await api.post(`/me/winners/${b.winnerId}/shipping`, payload)
+      const { data } = await api.post(`/me/winners/${b.winnerId}/shipping`, payload)
       closeModal()
-      toast('배송 정보가 저장되었어요! 🚚', 'success')
+      const applied = (data && data.applied) || 1
+      toast(applied > 1 ? `배송 정보가 ${applied}건에 저장되었어요! 🚚` : '배송 정보가 저장되었어요! 🚚', 'success')
       pageBids({}, getQuery())
     } catch (err) { toast(errMsg(err), 'error') }
   })

@@ -215,32 +215,48 @@ products.post('/:id/buy-now', requireAuth, async (c) => {
     return c.json({ error: '이 상품은 즉시구매를 지원하지 않습니다.' }, 400)
   }
 
+  // 구매 수량 (기본 1, 1~99 범위). 같은 상품을 여러 개 한 번에 구매 가능.
+  const body = await c.req.json().catch(() => null)
+  let qty = Math.floor(Number(body?.qty ?? 1))
+  if (!qty || isNaN(qty) || qty < 1) qty = 1
+  if (qty > 99) qty = 99
+
+  const totalPrice = buyNowPrice * qty
+
   const dbUser = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first<UserRow>()
   if (!dbUser) return c.json({ error: '사용자 정보를 찾을 수 없습니다.' }, 404)
 
-  // 포인트 검증 (경매포인트에서 차감)
-  if (dbUser.auctionPoint < buyNowPrice) {
-    return c.json({ error: `포인트가 부족합니다. (필요: ${buyNowPrice.toLocaleString()}P, 보유: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400)
+  // 포인트 검증 (경매포인트에서 총액 차감)
+  if (dbUser.auctionPoint < totalPrice) {
+    return c.json({ error: `포인트가 부족합니다. (필요: ${totalPrice.toLocaleString()}P, 보유: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400)
   }
 
   // 원자적 트랜잭션:
-  //   - 포인트 차감 UPDATE 를 조건부(auctionPoint >= buyNowPrice)로 하고 .requireRows() 표시:
+  //   - 포인트 차감 UPDATE 를 조건부(auctionPoint >= totalPrice)로 하고 .requireRows() 표시:
   //     0행이면(동시요청으로 잔액이 막 부족해졌으면) 트랜잭션 전체 롤백 → winners/내역도 취소.
-  //   - winners 레코드 생성 (shippingStatus 기본 PENDING) → 관리자 배송관리에 자동 유입.
+  //   - 구매 수량(qty)만큼 winners 레코드 생성 (shippingStatus 기본 PENDING) → 관리자 배송관리에 자동 유입.
   try {
-    await c.env.DB.batch([
+    const stmts: any[] = [
       c.env.DB.prepare(
         'UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?'
-      ).bind(buyNowPrice, user.id, buyNowPrice).requireRows(),
-      c.env.DB.prepare(
-        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
-         VALUES (?, ?, ?, ?, datetime('now'))`
-      ).bind(genId('w-'), user.id, id, buyNowPrice),
+      ).bind(totalPrice, user.id, totalPrice).requireRows(),
+    ]
+    for (let i = 0; i < qty; i++) {
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
+           VALUES (?, ?, ?, ?, datetime('now'))`
+        ).bind(genId('w-'), user.id, id, buyNowPrice)
+      )
+    }
+    const qtyText = qty > 1 ? ` x${qty}개` : ''
+    stmts.push(
       c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
          VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
-      ).bind(genId('ph-'), user.id, -buyNowPrice, `즉시구매: ${product.title} (${buyNowPrice.toLocaleString()}P)`),
-    ])
+      ).bind(genId('ph-'), user.id, -totalPrice, `즉시구매: ${product.title}${qtyText} (${totalPrice.toLocaleString()}P)`)
+    )
+    await c.env.DB.batch(stmts)
   } catch (e: any) {
     if (e?.name === 'BatchGuardError') {
       return c.json({ error: '포인트가 부족합니다.' }, 400)
@@ -254,6 +270,8 @@ products.post('/:id/buy-now', requireAuth, async (c) => {
     ok: true,
     bought: true,
     buyNowPrice,
+    qty,
+    totalPrice,
     marketPrice: product.marketPrice,
     title: product.title,
   })

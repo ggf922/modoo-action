@@ -105,6 +105,10 @@ me.post('/winners/:id/shipping', async (c) => {
   if (!recipientPhone) return c.json({ error: '연락처를 입력해주세요.' }, 400)
   if (!address1) return c.json({ error: '주소를 입력해주세요.' }, 400)
 
+  // 같은 상품의 배송 미입력 건에 동일 배송지를 한 번에 적용할지 여부
+  //   (즉시구매로 같은 상품을 여러 개 주문한 경우 배송지 반복 입력을 없애기 위함)
+  const applyToSameProduct = body?.applyToSameProduct === true
+
   // 본인의 당첨 건인지 확인
   const w = await c.env.DB.prepare('SELECT * FROM winners WHERE id = ? AND userId = ?')
     .bind(winnerId, user.id).first<any>()
@@ -121,7 +125,22 @@ me.post('/winners/:id/shipping', async (c) => {
      WHERE id = ?`
   ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, winnerId).run()
 
-  return c.json({ ok: true })
+  let applied = 1
+  if (applyToSameProduct) {
+    // 동일 회원 + 동일 상품 + 아직 배송 미입력(PENDING, 또는 상태 없음) 건에 동일 배송지 일괄 적용.
+    //   이미 발송/전달(SHIPPED/DELIVERED) 건은 제외. 방금 처리한 건(winnerId)은 이미 SUBMITTED 라 중복 대상 아님.
+    const res = await c.env.DB.prepare(
+      `UPDATE winners
+       SET recipientName = ?, recipientPhone = ?, postalCode = ?, address1 = ?, address2 = ?,
+           deliveryMemo = ?, shippingStatus = 'SUBMITTED', shippingSubmittedAt = datetime('now')
+       WHERE userId = ? AND productId = ? AND id != ?
+         AND (shippingStatus IS NULL OR shippingStatus = 'PENDING' OR shippingStatus = '')`
+    ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, user.id, w.productId, winnerId).run()
+    const extra = res?.meta?.changes ?? res?.changes ?? 0
+    applied += Number(extra)
+  }
+
+  return c.json({ ok: true, applied })
 })
 
 // 출금 신청

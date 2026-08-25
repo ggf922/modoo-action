@@ -9119,25 +9119,38 @@ products.post("/:id/buy-now", requireAuth, async (c) => {
   if (!buyNowPrice || buyNowPrice <= 0) {
     return c.json({ error: "\uC774 \uC0C1\uD488\uC740 \uC989\uC2DC\uAD6C\uB9E4\uB97C \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
   }
+  const body = await c.req.json().catch(() => null);
+  let qty = Math.floor(Number(body?.qty ?? 1));
+  if (!qty || isNaN(qty) || qty < 1) qty = 1;
+  if (qty > 99) qty = 99;
+  const totalPrice = buyNowPrice * qty;
   const dbUser = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
   if (!dbUser) return c.json({ error: "\uC0AC\uC6A9\uC790 \uC815\uBCF4\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
-  if (dbUser.auctionPoint < buyNowPrice) {
-    return c.json({ error: `\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uD544\uC694: ${buyNowPrice.toLocaleString()}P, \uBCF4\uC720: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400);
+  if (dbUser.auctionPoint < totalPrice) {
+    return c.json({ error: `\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4. (\uD544\uC694: ${totalPrice.toLocaleString()}P, \uBCF4\uC720: ${dbUser.auctionPoint.toLocaleString()}P)` }, 400);
   }
   try {
-    await c.env.DB.batch([
+    const stmts = [
       c.env.DB.prepare(
         "UPDATE users SET auctionPoint = auctionPoint - ? WHERE id = ? AND auctionPoint >= ?"
-      ).bind(buyNowPrice, user.id, buyNowPrice).requireRows(),
-      c.env.DB.prepare(
-        `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
-         VALUES (?, ?, ?, ?, datetime('now'))`
-      ).bind(genId("w-"), user.id, id, buyNowPrice),
+      ).bind(totalPrice, user.id, totalPrice).requireRows()
+    ];
+    for (let i = 0; i < qty; i++) {
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO winners (id, userId, productId, finalPrice, drawnAt)
+           VALUES (?, ?, ?, ?, datetime('now'))`
+        ).bind(genId("w-"), user.id, id, buyNowPrice)
+      );
+    }
+    const qtyText = qty > 1 ? ` x${qty}\uAC1C` : "";
+    stmts.push(
       c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
          VALUES (?, ?, 'USE', 'AUCTION', ?, ?, datetime('now'))`
-      ).bind(genId("ph-"), user.id, -buyNowPrice, `\uC989\uC2DC\uAD6C\uB9E4: ${product.title} (${buyNowPrice.toLocaleString()}P)`)
-    ]);
+      ).bind(genId("ph-"), user.id, -totalPrice, `\uC989\uC2DC\uAD6C\uB9E4: ${product.title}${qtyText} (${totalPrice.toLocaleString()}P)`)
+    );
+    await c.env.DB.batch(stmts);
   } catch (e) {
     if (e?.name === "BatchGuardError") {
       return c.json({ error: "\uD3EC\uC778\uD2B8\uAC00 \uBD80\uC871\uD569\uB2C8\uB2E4." }, 400);
@@ -9149,6 +9162,8 @@ products.post("/:id/buy-now", requireAuth, async (c) => {
     ok: true,
     bought: true,
     buyNowPrice,
+    qty,
+    totalPrice,
     marketPrice: product.marketPrice,
     title: product.title
   });
@@ -9333,6 +9348,7 @@ me.post("/winners/:id/shipping", async (c) => {
   if (!recipientName) return c.json({ error: "\uBC1B\uB294 \uBD84 \uC774\uB984\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
   if (!recipientPhone) return c.json({ error: "\uC5F0\uB77D\uCC98\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
   if (!address1) return c.json({ error: "\uC8FC\uC18C\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const applyToSameProduct = body?.applyToSameProduct === true;
   const w = await c.env.DB.prepare("SELECT * FROM winners WHERE id = ? AND userId = ?").bind(winnerId, user.id).first();
   if (!w) return c.json({ error: "\uB2F9\uCCA8 \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   if (w.shippingStatus === "SHIPPED" || w.shippingStatus === "DELIVERED") {
@@ -9344,7 +9360,19 @@ me.post("/winners/:id/shipping", async (c) => {
          deliveryMemo = ?, shippingStatus = 'SUBMITTED', shippingSubmittedAt = datetime('now')
      WHERE id = ?`
   ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, winnerId).run();
-  return c.json({ ok: true });
+  let applied = 1;
+  if (applyToSameProduct) {
+    const res = await c.env.DB.prepare(
+      `UPDATE winners
+       SET recipientName = ?, recipientPhone = ?, postalCode = ?, address1 = ?, address2 = ?,
+           deliveryMemo = ?, shippingStatus = 'SUBMITTED', shippingSubmittedAt = datetime('now')
+       WHERE userId = ? AND productId = ? AND id != ?
+         AND (shippingStatus IS NULL OR shippingStatus = 'PENDING' OR shippingStatus = '')`
+    ).bind(recipientName, recipientPhone, postalCode, address1, address2, deliveryMemo, user.id, w.productId, winnerId).run();
+    const extra = res?.meta?.changes ?? res?.changes ?? 0;
+    applied += Number(extra);
+  }
+  return c.json({ ok: true, applied });
 });
 me.post("/withdraw", async (c) => {
   const user = c.get("user");
@@ -10427,15 +10455,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820d"></script>
-  <script src="/static/i18n.js?v=20260820d"></script>
-  <script src="/static/i18n-dict.js?v=20260820d"></script>
-  <script src="/static/components.js?v=20260820d"></script>
-  <script src="/static/pages.js?v=20260820d"></script>
-  <script src="/static/mypage.js?v=20260820d"></script>
-  <script src="/static/network.js?v=20260820d"></script>
-  <script src="/static/admin.js?v=20260820d"></script>
-  <script src="/static/app.js?v=20260820d"></script>
+  <script src="/static/api.js?v=20260820e"></script>
+  <script src="/static/i18n.js?v=20260820e"></script>
+  <script src="/static/i18n-dict.js?v=20260820e"></script>
+  <script src="/static/components.js?v=20260820e"></script>
+  <script src="/static/pages.js?v=20260820e"></script>
+  <script src="/static/mypage.js?v=20260820e"></script>
+  <script src="/static/network.js?v=20260820e"></script>
+  <script src="/static/admin.js?v=20260820e"></script>
+  <script src="/static/app.js?v=20260820e"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;
