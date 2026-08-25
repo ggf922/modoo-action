@@ -8,7 +8,7 @@ import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth, ensureWithdrawalAccountColumns } from './me'
 import { ensureProductUrlColumn, ensureBuyNowPriceColumn } from './products'
-import { ensureMemberFlags, maybePayReferralReward } from '../lib/referral'
+import { ensureMemberFlags, maybePayReferralReward, maybePromoteToVVIP } from '../lib/referral'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 admin.use('*', requireAdmin)
@@ -298,14 +298,20 @@ admin.post('/members/:id/grade', async (c) => {
   const grade = String(b?.grade ?? '')
   if (!GRADES.includes(grade)) return c.json({ error: '올바르지 않은 등급입니다.' }, 400)
 
-  const target = await c.env.DB.prepare('SELECT id, role FROM users WHERE id = ?').bind(id).first<{ id: string; role: string }>()
+  const target = await c.env.DB.prepare('SELECT id, role, referrerId FROM users WHERE id = ?').bind(id).first<{ id: string; role: string; referrerId: string | null }>()
   if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
 
   await c.env.DB.prepare("UPDATE users SET grade = ?, updatedAt = datetime('now') WHERE id = ?").bind(grade, id).run()
 
   // VIP 이상 + 활성이 되면 추천인에게 추천 보상 1회 지급 (이미 지급됐으면 무시)
   const referralPaid = await maybePayReferralReward(c.env.DB, id)
-  return c.json({ ok: true, grade, referralPaid })
+
+  // 이 회원이 VIP 이상이 됐다면, 추천인의 "직속 VIP 이상 5명" 조건을 확인해 자동 VVIP 승급
+  let vvipPromoted = false
+  if (['VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR'].includes(grade)) {
+    vvipPromoted = await maybePromoteToVVIP(c.env.DB, target.referrerId)
+  }
+  return c.json({ ok: true, grade, referralPaid, vvipPromoted })
 })
 
 // 회원 활성/비활성 설정

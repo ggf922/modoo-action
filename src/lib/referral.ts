@@ -33,6 +33,47 @@ export async function ensureMemberFlags(DB: any) {
 // VIP 이상으로 간주하는 등급(추천 보상 지급 조건). NORMAL(일반회원)만 제외.
 const VIP_OR_ABOVE = ['VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
 
+// VVIP 자동 승급 기준: "VIP 이상"인 직속 추천 회원 수가 이 값 이상이면 VVIP 로 자동 승급
+const VVIP_DIRECT_VIP_THRESHOLD = 5
+
+/**
+ * referrerId 회원이 직접 추천한 하위 회원 중 "VIP 이상" 등급인 사람이 5명 이상이면
+ * 해당 회원을 자동으로 VVIP 로 승급시킨다.
+ * - 이미 VVIP 이상(AGENCY/DISTRIBUTOR/DIRECTOR 포함) 이면 강등/변경하지 않는다(상위 등급 유지).
+ * - NORMAL / VIP 회원만 VVIP 로 승급 대상. (관리자 상위 등급은 건드리지 않음)
+ * 어떤 회원이 VIP 이상이 되는 시점(등급 변경 등)에 그 회원의 추천인에 대해 호출하면 된다.
+ * @returns 승급했으면 true, 아니면 false
+ */
+export async function maybePromoteToVVIP(DB: any, referrerId: string | null): Promise<boolean> {
+  if (!referrerId) return false
+
+  const referrer = await DB.prepare(
+    `SELECT id, grade FROM users WHERE id = ?`
+  ).bind(referrerId).first<{ id: string; grade: string }>()
+  if (!referrer) return false
+
+  // NORMAL 또는 VIP 인 경우에만 VVIP 로 승급(그 이상 등급은 유지)
+  const g = String(referrer.grade)
+  if (g !== 'NORMAL' && g !== 'VIP') return false
+
+  // 직속(=referrerId 가 이 회원) 하위 중 "VIP 이상" 등급 인원 수
+  const cnt = await DB.prepare(
+    `SELECT COUNT(*) AS n FROM users
+      WHERE referrerId = ?
+        AND grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR')`
+  ).bind(referrerId).first<{ n: number }>()
+  const directVipCount = Number(cnt?.n ?? 0)
+
+  if (directVipCount < VVIP_DIRECT_VIP_THRESHOLD) return false
+
+  await DB.prepare(
+    `UPDATE users SET grade = 'VVIP', updatedAt = datetime('now')
+      WHERE id = ? AND grade IN ('NORMAL', 'VIP')`
+  ).bind(referrerId).run()
+
+  return true
+}
+
 /**
  * 피추천자(memberId)가 "VIP 이상 + 활성" 상태가 됐을 때, 추천인에게 추천 보상을 단 1회만 지급한다.
  * - 이미 지급된 적이 있으면(referralRewardPaid=1) 아무 것도 하지 않는다(구독 반복·재승급에도 재지급 없음).

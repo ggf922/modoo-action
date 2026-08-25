@@ -9174,6 +9174,28 @@ async function ensureMemberFlags(DB) {
   _memberFlagsReady = true;
 }
 var VIP_OR_ABOVE = ["VIP", "VVIP", "AGENCY", "DISTRIBUTOR", "DIRECTOR"];
+var VVIP_DIRECT_VIP_THRESHOLD = 5;
+async function maybePromoteToVVIP(DB, referrerId) {
+  if (!referrerId) return false;
+  const referrer = await DB.prepare(
+    `SELECT id, grade FROM users WHERE id = ?`
+  ).bind(referrerId).first();
+  if (!referrer) return false;
+  const g = String(referrer.grade);
+  if (g !== "NORMAL" && g !== "VIP") return false;
+  const cnt = await DB.prepare(
+    `SELECT COUNT(*) AS n FROM users
+      WHERE referrerId = ?
+        AND grade IN ('VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR')`
+  ).bind(referrerId).first();
+  const directVipCount = Number(cnt?.n ?? 0);
+  if (directVipCount < VVIP_DIRECT_VIP_THRESHOLD) return false;
+  await DB.prepare(
+    `UPDATE users SET grade = 'VVIP', updatedAt = datetime('now')
+      WHERE id = ? AND grade IN ('NORMAL', 'VIP')`
+  ).bind(referrerId).run();
+  return true;
+}
 async function maybePayReferralReward(DB, memberId) {
   await ensureMemberFlags(DB);
   const m = await DB.prepare(
@@ -9784,11 +9806,15 @@ admin.post("/members/:id/grade", async (c) => {
   const b2 = await c.req.json().catch(() => null);
   const grade = String(b2?.grade ?? "");
   if (!GRADES.includes(grade)) return c.json({ error: "\uC62C\uBC14\uB974\uC9C0 \uC54A\uC740 \uB4F1\uAE09\uC785\uB2C8\uB2E4." }, 400);
-  const target = await c.env.DB.prepare("SELECT id, role FROM users WHERE id = ?").bind(id).first();
+  const target = await c.env.DB.prepare("SELECT id, role, referrerId FROM users WHERE id = ?").bind(id).first();
   if (!target) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   await c.env.DB.prepare("UPDATE users SET grade = ?, updatedAt = datetime('now') WHERE id = ?").bind(grade, id).run();
   const referralPaid = await maybePayReferralReward(c.env.DB, id);
-  return c.json({ ok: true, grade, referralPaid });
+  let vvipPromoted = false;
+  if (["VIP", "VVIP", "AGENCY", "DISTRIBUTOR", "DIRECTOR"].includes(grade)) {
+    vvipPromoted = await maybePromoteToVVIP(c.env.DB, target.referrerId);
+  }
+  return c.json({ ok: true, grade, referralPaid, vvipPromoted });
 });
 admin.post("/members/:id/active", async (c) => {
   await ensureMemberFlags(c.env.DB);
