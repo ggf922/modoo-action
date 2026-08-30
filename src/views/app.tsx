@@ -66,15 +66,15 @@ export function renderApp(): string {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820h"></script>
-  <script src="/static/i18n.js?v=20260820h"></script>
-  <script src="/static/i18n-dict.js?v=20260820h"></script>
-  <script src="/static/components.js?v=20260820h"></script>
-  <script src="/static/pages.js?v=20260820h"></script>
-  <script src="/static/mypage.js?v=20260820h"></script>
-  <script src="/static/network.js?v=20260820h"></script>
-  <script src="/static/admin.js?v=20260820h"></script>
-  <script src="/static/app.js?v=20260820h"></script>
+  <script src="/static/api.js?v=20260820i"></script>
+  <script src="/static/i18n.js?v=20260820i"></script>
+  <script src="/static/i18n-dict.js?v=20260820i"></script>
+  <script src="/static/components.js?v=20260820i"></script>
+  <script src="/static/pages.js?v=20260820i"></script>
+  <script src="/static/mypage.js?v=20260820i"></script>
+  <script src="/static/network.js?v=20260820i"></script>
+  <script src="/static/admin.js?v=20260820i"></script>
+  <script src="/static/app.js?v=20260820i"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`

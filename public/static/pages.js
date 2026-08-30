@@ -24,6 +24,10 @@ async function pageHome() {
          class="inline-flex items-center justify-center gap-1.5 bg-brand-dark text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-black transition whitespace-nowrap">
         <i class="fas fa-bag-shopping"></i> 국내/국외 쇼핑몰
       </a>
+      <a href="https://modoomodoo.fun/distribution-program" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:from-teal-600 hover:to-emerald-600 transition whitespace-nowrap">
+        <i class="fas fa-handshake"></i> CONVIVIA
+      </a>
     </div>
     <div class="relative z-10 max-w-2xl">
       <span class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-sm font-medium mb-3">🌍 세계 최초 전원 수익형 경매</span>
