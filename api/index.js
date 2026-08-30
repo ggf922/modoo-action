@@ -10447,7 +10447,7 @@ function renderApp() {
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="\uBAA8\uB450\uBAA8\uB450 \uACBD\uB9E4\uBAB0" />
   <meta property="og:title" content="\uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0, \uBAA8\uB450\uBAA8\uB450 \u{1F381}" />
-  <meta property="og:description" content="\uB099\uCC30\uB418\uBA74 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD6E8\uC52C \uC800\uB834\uD558\uAC8C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
+  <meta property="og:description" content="\uB099\uCC30\uB418\uBA74 \uB3C4\uB9E4\uAC00\uB85C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
   <meta property="og:image" content="https://modoo.auction/static/og-image.jpg" />
   <meta property="og:image:secure_url" content="https://modoo.auction/static/og-image.jpg" />
   <meta property="og:image:type" content="image/jpeg" />
@@ -10460,7 +10460,7 @@ function renderApp() {
   <!-- ===== \uD2B8\uC704\uD130(X) \uCE74\uB4DC ===== -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="\uBAA8\uB450\uAC00 \uC774\uC775\uC744 \uBCF4\uB294 \uACF5\uB3D9 \uAD6C\uB9E4 \uACBD\uB9E4 \uC1FC\uD551\uBAB0, \uBAA8\uB450\uBAA8\uB450 \u{1F381}" />
-  <meta name="twitter:description" content="\uB099\uCC30\uB418\uBA74 \uC2DC\uC911\uAC00\uBCF4\uB2E4 \uD6E8\uC52C \uC800\uB834\uD558\uAC8C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
+  <meta name="twitter:description" content="\uB099\uCC30\uB418\uBA74 \uB3C4\uB9E4\uAC00\uB85C \uC790\uB3D9 \uAD6C\uB9E4! \uC544\uC27D\uAC8C \uBBF8\uB099\uCC30\uB3FC\uB3C4 \uBCF4\uC0C1 \uD3EC\uC778\uD2B8\uB97C \uB4DC\uB824\uC694." />
   <meta name="twitter:image" content="https://modoo.auction/static/og-image.jpg" />
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -10502,15 +10502,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820g"></script>
-  <script src="/static/i18n.js?v=20260820g"></script>
-  <script src="/static/i18n-dict.js?v=20260820g"></script>
-  <script src="/static/components.js?v=20260820g"></script>
-  <script src="/static/pages.js?v=20260820g"></script>
-  <script src="/static/mypage.js?v=20260820g"></script>
-  <script src="/static/network.js?v=20260820g"></script>
-  <script src="/static/admin.js?v=20260820g"></script>
-  <script src="/static/app.js?v=20260820g"></script>
+  <script src="/static/api.js?v=20260820h"></script>
+  <script src="/static/i18n.js?v=20260820h"></script>
+  <script src="/static/i18n-dict.js?v=20260820h"></script>
+  <script src="/static/components.js?v=20260820h"></script>
+  <script src="/static/pages.js?v=20260820h"></script>
+  <script src="/static/mypage.js?v=20260820h"></script>
+  <script src="/static/network.js?v=20260820h"></script>
+  <script src="/static/admin.js?v=20260820h"></script>
+  <script src="/static/app.js?v=20260820h"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

@@ -11,7 +11,7 @@ export function renderApp(): string {
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="모두모두 경매몰" />
   <meta property="og:title" content="모두가 이익을 보는 공동 구매 경매 쇼핑몰, 모두모두 🎁" />
-  <meta property="og:description" content="낙찰되면 시중가보다 훨씬 저렴하게 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
+  <meta property="og:description" content="낙찰되면 도매가로 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
   <meta property="og:image" content="https://modoo.auction/static/og-image.jpg" />
   <meta property="og:image:secure_url" content="https://modoo.auction/static/og-image.jpg" />
   <meta property="og:image:type" content="image/jpeg" />
@@ -24,7 +24,7 @@ export function renderApp(): string {
   <!-- ===== 트위터(X) 카드 ===== -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="모두가 이익을 보는 공동 구매 경매 쇼핑몰, 모두모두 🎁" />
-  <meta name="twitter:description" content="낙찰되면 시중가보다 훨씬 저렴하게 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
+  <meta name="twitter:description" content="낙찰되면 도매가로 자동 구매! 아쉽게 미낙찰돼도 보상 포인트를 드려요." />
   <meta name="twitter:image" content="https://modoo.auction/static/og-image.jpg" />
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -66,15 +66,15 @@ export function renderApp(): string {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820g"></script>
-  <script src="/static/i18n.js?v=20260820g"></script>
-  <script src="/static/i18n-dict.js?v=20260820g"></script>
-  <script src="/static/components.js?v=20260820g"></script>
-  <script src="/static/pages.js?v=20260820g"></script>
-  <script src="/static/mypage.js?v=20260820g"></script>
-  <script src="/static/network.js?v=20260820g"></script>
-  <script src="/static/admin.js?v=20260820g"></script>
-  <script src="/static/app.js?v=20260820g"></script>
+  <script src="/static/api.js?v=20260820h"></script>
+  <script src="/static/i18n.js?v=20260820h"></script>
+  <script src="/static/i18n-dict.js?v=20260820h"></script>
+  <script src="/static/components.js?v=20260820h"></script>
+  <script src="/static/pages.js?v=20260820h"></script>
+  <script src="/static/mypage.js?v=20260820h"></script>
+  <script src="/static/network.js?v=20260820h"></script>
+  <script src="/static/admin.js?v=20260820h"></script>
+  <script src="/static/app.js?v=20260820h"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`
