@@ -21,6 +21,17 @@ async function ensureBidRoundSafe(DB: any) {
   _winnerBidIdReady = true
 }
 
+// point_history 되돌리기(원상복구) 지원용 컬럼 런타임 보장
+//  · reversedAt : 이 이력이 되돌려진 시각 (null이면 아직 되돌려지지 않음)
+//  · reversalOf : 이 이력이 "어떤 이력을 되돌린 상쇄 기록인지" 원본 id (되돌리기로 생성된 상쇄 이력에만 존재)
+let _phReversalReady = false
+async function ensurePointReversalColumns(DB: any) {
+  if (_phReversalReady) return
+  await DB.prepare(`ALTER TABLE point_history ADD COLUMN IF NOT EXISTS reversedAt TEXT`).run()
+  await DB.prepare(`ALTER TABLE point_history ADD COLUMN IF NOT EXISTS reversalOf TEXT`).run()
+  _phReversalReady = true
+}
+
 // 대시보드 KPI
 admin.get('/stats', async (c) => {
   const db = c.env.DB
@@ -290,6 +301,57 @@ admin.post('/members/:id/adjust', async (c) => {
   return c.json({ ok: true })
 })
 
+// 포인트 이력 되돌리기(이전 상태로 원상복구)
+//  · 해당 이력의 amount 를 반대로 상쇄하는 역방향 조정을 적용하고,
+//    잔액을 되돌리기 전 상태로 복구한다.
+//  · 원본 이력에는 reversedAt 을 기록해 "되돌림 처리됨"으로 표시하고,
+//    상쇄 기록(reversalOf=원본id)을 새로 남겨 감사 추적을 보장한다.
+//  · 이미 되돌려진 이력, 또는 되돌리기로 생성된 상쇄 기록 자체는 다시 되돌릴 수 없다.
+admin.post('/members/:mid/point-history/:phid/revert', async (c) => {
+  const mid = c.req.param('mid')
+  const phid = c.req.param('phid')
+  await ensurePointReversalColumns(c.env.DB)
+
+  // 대상 이력 조회 (해당 회원 소유인지 함께 확인)
+  const ph = await c.env.DB.prepare(
+    `SELECT id, userId, type, amount, description, reversedAt, reversalOf
+     FROM point_history WHERE id = ? AND userId = ?`
+  ).bind(phid, mid).first<{ id: string; userId: string; type: string; amount: number; description: string; reversedAt: string | null; reversalOf: string | null }>()
+  if (!ph) return c.json({ error: '포인트 이력을 찾을 수 없습니다.' }, 404)
+  if (ph.reversedAt) return c.json({ error: '이미 되돌린 내역입니다.' }, 400)
+  if (ph.reversalOf) return c.json({ error: '되돌리기로 생성된 상쇄 내역은 다시 되돌릴 수 없습니다.' }, 400)
+
+  const amount = Number(ph.amount || 0)
+  if (!amount) return c.json({ error: '되돌릴 포인트가 없습니다.' }, 400)
+  const revertAmount = -amount // 반대 방향으로 상쇄
+
+  // 현재 잔액 확인 (되돌린 뒤 음수가 되면 안 됨)
+  const target = await c.env.DB.prepare('SELECT auctionPoint AS v FROM users WHERE id = ?').bind(mid).first<{ v: number }>()
+  if (!target) return c.json({ error: '회원을 찾을 수 없습니다.' }, 404)
+  if (Number(target.v) + revertAmount < 0) {
+    return c.json({ error: '되돌리면 포인트가 음수가 되어 처리할 수 없습니다. (현재 보유 포인트 부족)' }, 400)
+  }
+
+  try {
+    await c.env.DB.batch([
+      // 1) 잔액을 되돌리기 전으로 복구
+      c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ? AND auctionPoint + ? >= 0')
+        .bind(revertAmount, mid, revertAmount).requireRows(),
+      // 2) 원본 이력을 "되돌림 처리됨"으로 표시
+      c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(phid),
+      // 3) 상쇄 기록 추가 (감사 추적용)
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), mid, revertAmount, `되돌리기: ${ph.description || ''}`, phid),
+    ])
+  } catch (e: any) {
+    if (e?.name === 'BatchGuardError') return c.json({ error: '되돌리면 포인트가 음수가 되어 처리할 수 없습니다.' }, 400)
+    throw e
+  }
+  return c.json({ ok: true, revertAmount })
+})
+
 // 회원 등급 변경/승인
 const GRADES = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
 admin.post('/members/:id/grade', async (c) => {
@@ -521,6 +583,7 @@ admin.get('/members/:id', async (c) => {
   // ===== 누적 내역 조회 (경매당첨/당첨경품/출금신청/충전입금/포인트 이력) =====
   //   즉시구매 여부는 winners.bidId 로 구분 (bidId 없으면 방안 B 즉시구매)
   await ensureBidRoundSafe(c.env.DB)
+  await ensurePointReversalColumns(c.env.DB)
 
   // 1) 당첨/구매 경품 (배송 상태 포함)
   const winnings = (await c.env.DB.prepare(
@@ -544,7 +607,7 @@ admin.get('/members/:id', async (c) => {
 
   // 4) 포인트 이력 (참여/보상/충전/출금/관리자조정 등 전체)
   const pointHistory = (await c.env.DB.prepare(
-    `SELECT id, type, pointKind, amount, description, createdAt
+    `SELECT id, type, pointKind, amount, description, createdAt, reversedAt, reversalOf
      FROM point_history WHERE userId = ? ORDER BY createdAt DESC`
   ).bind(uid).all()).results
 

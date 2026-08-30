@@ -8378,6 +8378,8 @@ var QUOTED_COLUMNS = [
   "bidId",
   // point_history
   "pointKind",
+  "reversedAt",
+  "reversalOf",
   // withdrawals / charge_requests
   "requestedAt",
   "processedAt",
@@ -9585,6 +9587,13 @@ async function ensureBidRoundSafe(DB) {
   await DB.prepare(`ALTER TABLE winners ADD COLUMN IF NOT EXISTS bidId TEXT`).run();
   _winnerBidIdReady = true;
 }
+var _phReversalReady = false;
+async function ensurePointReversalColumns(DB) {
+  if (_phReversalReady) return;
+  await DB.prepare(`ALTER TABLE point_history ADD COLUMN IF NOT EXISTS reversedAt TEXT`).run();
+  await DB.prepare(`ALTER TABLE point_history ADD COLUMN IF NOT EXISTS reversalOf TEXT`).run();
+  _phReversalReady = true;
+}
 admin.get("/stats", async (c) => {
   const db = c.env.DB;
   const totalUsers = (await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='MEMBER'").first())?.c ?? 0;
@@ -9847,6 +9856,43 @@ admin.post("/members/:id/adjust", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+admin.post("/members/:mid/point-history/:phid/revert", async (c) => {
+  const mid = c.req.param("mid");
+  const phid = c.req.param("phid");
+  await ensurePointReversalColumns(c.env.DB);
+  const ph = await c.env.DB.prepare(
+    `SELECT id, userId, type, amount, description, reversedAt, reversalOf
+     FROM point_history WHERE id = ? AND userId = ?`
+  ).bind(phid, mid).first();
+  if (!ph) return c.json({ error: "\uD3EC\uC778\uD2B8 \uC774\uB825\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (ph.reversedAt) return c.json({ error: "\uC774\uBBF8 \uB418\uB3CC\uB9B0 \uB0B4\uC5ED\uC785\uB2C8\uB2E4." }, 400);
+  if (ph.reversalOf) return c.json({ error: "\uB418\uB3CC\uB9AC\uAE30\uB85C \uC0DD\uC131\uB41C \uC0C1\uC1C4 \uB0B4\uC5ED\uC740 \uB2E4\uC2DC \uB418\uB3CC\uB9B4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  const amount = Number(ph.amount || 0);
+  if (!amount) return c.json({ error: "\uB418\uB3CC\uB9B4 \uD3EC\uC778\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  const revertAmount = -amount;
+  const target = await c.env.DB.prepare("SELECT auctionPoint AS v FROM users WHERE id = ?").bind(mid).first();
+  if (!target) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (Number(target.v) + revertAmount < 0) {
+    return c.json({ error: "\uB418\uB3CC\uB9AC\uBA74 \uD3EC\uC778\uD2B8\uAC00 \uC74C\uC218\uAC00 \uB418\uC5B4 \uCC98\uB9AC\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. (\uD604\uC7AC \uBCF4\uC720 \uD3EC\uC778\uD2B8 \uBD80\uC871)" }, 400);
+  }
+  try {
+    await c.env.DB.batch([
+      // 1) 잔액을 되돌리기 전으로 복구
+      c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ? AND auctionPoint + ? >= 0").bind(revertAmount, mid, revertAmount).requireRows(),
+      // 2) 원본 이력을 "되돌림 처리됨"으로 표시
+      c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(phid),
+      // 3) 상쇄 기록 추가 (감사 추적용)
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), mid, revertAmount, `\uB418\uB3CC\uB9AC\uAE30: ${ph.description || ""}`, phid)
+    ]);
+  } catch (e) {
+    if (e?.name === "BatchGuardError") return c.json({ error: "\uB418\uB3CC\uB9AC\uBA74 \uD3EC\uC778\uD2B8\uAC00 \uC74C\uC218\uAC00 \uB418\uC5B4 \uCC98\uB9AC\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+    throw e;
+  }
+  return c.json({ ok: true, revertAmount });
+});
 var GRADES = ["NORMAL", "VIP", "VVIP", "AGENCY", "DISTRIBUTOR", "DIRECTOR"];
 admin.post("/members/:id/grade", async (c) => {
   const id = c.req.param("id");
@@ -10025,6 +10071,7 @@ admin.get("/members/:id", async (c) => {
   ).bind(uid2).first();
   if (!m) return c.json({ error: "\uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   await ensureBidRoundSafe(c.env.DB);
+  await ensurePointReversalColumns(c.env.DB);
   const winnings = (await c.env.DB.prepare(
     `SELECT w.id, w.finalPrice, w.drawnAt, w.shippingStatus, w.bidId,
             p.title, p.imageUrl, p.marketPrice
@@ -10040,7 +10087,7 @@ admin.get("/members/:id", async (c) => {
      FROM charge_requests WHERE userId = ? ORDER BY requestedAt DESC`
   ).bind(uid2).all()).results;
   const pointHistory = (await c.env.DB.prepare(
-    `SELECT id, type, pointKind, amount, description, createdAt
+    `SELECT id, type, pointKind, amount, description, createdAt, reversedAt, reversalOf
      FROM point_history WHERE userId = ? ORDER BY createdAt DESC`
   ).bind(uid2).all()).results;
   const summary = {
@@ -10455,15 +10502,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820e"></script>
-  <script src="/static/i18n.js?v=20260820e"></script>
-  <script src="/static/i18n-dict.js?v=20260820e"></script>
-  <script src="/static/components.js?v=20260820e"></script>
-  <script src="/static/pages.js?v=20260820e"></script>
-  <script src="/static/mypage.js?v=20260820e"></script>
-  <script src="/static/network.js?v=20260820e"></script>
-  <script src="/static/admin.js?v=20260820e"></script>
-  <script src="/static/app.js?v=20260820e"></script>
+  <script src="/static/api.js?v=20260820f"></script>
+  <script src="/static/i18n.js?v=20260820f"></script>
+  <script src="/static/i18n-dict.js?v=20260820f"></script>
+  <script src="/static/components.js?v=20260820f"></script>
+  <script src="/static/pages.js?v=20260820f"></script>
+  <script src="/static/mypage.js?v=20260820f"></script>
+  <script src="/static/network.js?v=20260820f"></script>
+  <script src="/static/admin.js?v=20260820f"></script>
+  <script src="/static/app.js?v=20260820f"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

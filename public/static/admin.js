@@ -670,12 +670,23 @@ async function openMemberDetail(userId) {
   const tabPoints = pointHistory.length ? pointHistory.map(ph => {
     const amt = Number(ph.amount || 0)
     const plus = amt >= 0
-    return `<div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+    const isReversed = !!ph.reversedAt         // 이미 되돌려진 원본 이력
+    const isReversal = !!ph.reversalOf         // 되돌리기로 생성된 상쇄 기록
+    // 되돌리기 가능: 아직 안 되돌려짐 + 상쇄 기록 아님 + 금액 있음
+    const canRevert = !isReversed && !isReversal && amt !== 0
+    const revertBtn = canRevert
+      ? `<button type="button" onclick="revertPoint('${m.id}','${ph.id}', ${amt}, this)"
+           class="shrink-0 text-[11px] px-2 py-1 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500 font-bold whitespace-nowrap transition"
+           title="이 내역을 취소하고 이전 상태로 되돌립니다"><i class="fas fa-rotate-left"></i> 되돌리기</button>`
+      : ''
+    const reversedTag = isReversed ? badge('되돌림', 'bg-red-100 text-red-500') : ''
+    return `<div class="flex items-center justify-between gap-2 py-2 border-b border-gray-50 last:border-0 ${isReversed ? 'opacity-60' : ''}">
       <div class="min-w-0 flex-1">
-        <div class="text-sm text-gray-700 truncate">${badge(phType(ph.type), 'bg-gray-100 text-gray-500')} ${ph.description || ''}</div>
+        <div class="text-sm text-gray-700 truncate">${badge(phType(ph.type), 'bg-gray-100 text-gray-500')} ${reversedTag} <span class="${isReversed ? 'line-through' : ''}">${ph.description || ''}</span></div>
         <div class="text-[11px] text-gray-400 mt-0.5">${fmtDateTime(ph.createdAt)}</div>
       </div>
-      <div class="text-sm font-bold shrink-0 ${plus ? 'text-green-600' : 'text-red-500'}">${plus ? '+' : ''}${won(amt)}P</div>
+      <div class="text-sm font-bold shrink-0 ${plus ? 'text-green-600' : 'text-red-500'} ${isReversed ? 'line-through' : ''}">${plus ? '+' : ''}${won(amt)}P</div>
+      ${revertBtn}
     </div>`
   }).join('') : emptyRow('포인트 이력이 없습니다.')
 
@@ -773,6 +784,32 @@ function switchMemberTab(key) {
     el.classList.toggle('bg-gray-100', !active)
     el.classList.toggle('text-gray-500', !active)
   })
+}
+
+// 포인트 이력 되돌리기 (이전 상태로 원상복구)
+async function revertPoint(memberId, phId, amount, btn) {
+  const amt = Number(amount || 0)
+  const dir = amt >= 0 ? '지급' : '차감'
+  const back = amt >= 0 ? '회수' : '환급'
+  const ok = confirm(
+    `이 포인트 내역을 되돌릴까요?\n\n` +
+    `· 원래 처리: ${amt >= 0 ? '+' : ''}${won(amt)}P (${dir})\n` +
+    `· 되돌리기: ${-amt >= 0 ? '+' : ''}${won(-amt)}P (${back})\n\n` +
+    `보유 포인트가 이전 상태로 복구되며, 원본 내역은 "되돌림"으로 표시됩니다.`
+  )
+  if (!ok) return
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' }
+  try {
+    await api.post(`/admin/members/${memberId}/point-history/${phId}/revert`, {})
+    toast('되돌리기가 완료되었어요. 포인트가 이전 상태로 복구되었습니다.', 'success')
+    closeModal()
+    // 상세 모달 다시 열어 최신 상태 반영
+    await openMemberDetail(memberId)
+    if (typeof switchMemberTab === 'function') switchMemberTab('points')
+  } catch (err) {
+    toast(errMsg(err), 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 되돌리기' }
+  }
 }
 
 // 회원 정보 수정 모달

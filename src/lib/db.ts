@@ -36,7 +36,7 @@ const QUOTED_COLUMNS = [
   'finalPrice', 'drawnAt', 'recipientName', 'recipientPhone', 'postalCode',
   'deliveryMemo', 'shippingStatus', 'shippingSubmittedAt', 'bidId',
   // point_history
-  'pointKind',
+  'pointKind', 'reversedAt', 'reversalOf',
   // withdrawals / charge_requests
   'requestedAt', 'processedAt',
   // site_config
