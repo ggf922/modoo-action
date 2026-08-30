@@ -192,16 +192,21 @@ function renderProductCard(p, featured) {
 // ===== 모달 =====
 function openModal(html, opts = {}) {
   const root = document.getElementById('modal-root')
+  const dismissable = opts.dismissable !== false
+  // 바깥 컨테이너와 반투명 배경(오버레이) 모두 클릭 시 닫히도록 처리.
+  // 흰색 모달 박스는 event.stopPropagation()으로 내부 클릭이 전파되지 않음.
+  const bgClick = dismissable ? ' onclick="closeModal(event)"' : ''
   root.innerHTML = `
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4" onclick="${opts.dismissable === false ? '' : 'closeModal(event)'}">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fadeup"></div>
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4"${bgClick}>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fadeup"${bgClick}></div>
     <div class="relative bg-white rounded-2xl shadow-2xl w-full ${opts.maxWidth || 'max-w-md'} max-h-[90vh] overflow-y-auto animate-pop" onclick="event.stopPropagation()">
       ${html}
     </div>
   </div>`
 }
 function closeModal(e) {
-  if (e && e.target !== e.currentTarget) return
+  // 흰색 모달 박스 내부 클릭은 stopPropagation으로 여기 도달하지 않음.
+  // 바깥 컨테이너/오버레이 클릭만 도달하므로 그대로 닫는다.
   document.getElementById('modal-root').innerHTML = ''
 }
 
