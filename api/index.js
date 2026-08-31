@@ -8344,6 +8344,7 @@ var QUOTED_COLUMNS = [
   "subscriptionActive",
   "subscriptionUntil",
   "referralRewardPaid",
+  "conviviaMember",
   // subscription_payments
   "paidAt",
   // products
@@ -9594,6 +9595,12 @@ async function ensurePointReversalColumns(DB) {
   await DB.prepare(`ALTER TABLE point_history ADD COLUMN IF NOT EXISTS reversalOf TEXT`).run();
   _phReversalReady = true;
 }
+var _conviviaReady = false;
+async function ensureConviviaColumn(DB) {
+  if (_conviviaReady) return;
+  await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS conviviaMember BOOLEAN DEFAULT FALSE`).run();
+  _conviviaReady = true;
+}
 admin.get("/stats", async (c) => {
   const db = c.env.DB;
   const totalUsers = (await db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='MEMBER'").first())?.c ?? 0;
@@ -9948,6 +9955,69 @@ admin.post("/members/grade-grant", async (c) => {
   }
   await c.env.DB.batch(stmts);
   return c.json({ ok: true, count: targets.length, amount, grade });
+});
+admin.get("/convivia", async (c) => {
+  await ensureConviviaColumn(c.env.DB);
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, email, name, nickname, grade, auctionPoint
+     FROM users WHERE conviviaMember = TRUE AND role = 'MEMBER'
+     ORDER BY name ASC`
+  ).all()).results;
+  return c.json({ members: rows });
+});
+admin.get("/convivia/candidates", async (c) => {
+  await ensureConviviaColumn(c.env.DB);
+  const q = (c.req.query("q") || "").trim();
+  let sql = `SELECT id, email, name, nickname, grade, auctionPoint
+             FROM users WHERE role = 'MEMBER' AND (conviviaMember IS NULL OR conviviaMember = FALSE)`;
+  const binds = [];
+  if (q) {
+    sql += " AND (email LIKE ? OR name LIKE ? OR nickname LIKE ?)";
+    binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  sql += " ORDER BY name ASC LIMIT 100";
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results;
+  return c.json({ members: rows });
+});
+admin.post("/convivia/register", async (c) => {
+  await ensureConviviaColumn(c.env.DB);
+  const b2 = await c.req.json().catch(() => null);
+  const ids = Array.isArray(b2?.ids) ? b2.ids.filter((x) => typeof x === "string" && x) : [];
+  if (!ids.length) return c.json({ error: "\uB4F1\uB85D\uD560 \uD68C\uC6D0\uC744 \uC120\uD0DD\uD574\uC8FC\uC138\uC694." }, 400);
+  const stmts = ids.map(
+    (id) => c.env.DB.prepare("UPDATE users SET conviviaMember = TRUE WHERE id = ? AND role = 'MEMBER'").bind(id)
+  );
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, count: ids.length });
+});
+admin.post("/convivia/:id/unregister", async (c) => {
+  await ensureConviviaColumn(c.env.DB);
+  const id = c.req.param("id");
+  const res = await c.env.DB.prepare("UPDATE users SET conviviaMember = FALSE WHERE id = ?").bind(id).run();
+  const changes = res.meta?.changes ?? res.changes ?? 0;
+  if (!changes) return c.json({ error: "\uD574\uB2F9 \uD68C\uC6D0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  return c.json({ ok: true });
+});
+admin.post("/convivia/grant", async (c) => {
+  await ensureConviviaColumn(c.env.DB);
+  const b2 = await c.req.json().catch(() => null);
+  const amount = Number(b2?.amount);
+  const reason = b2?.reason ? String(b2.reason).trim() : "CONVIVIA \uD68C\uC6D0 \uC9C0\uAE09";
+  if (!amount || isNaN(amount) || amount <= 0) return c.json({ error: "\uC9C0\uAE09 \uAE08\uC561\uC744 \uC62C\uBC14\uB974\uAC8C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const targets = (await c.env.DB.prepare(
+    "SELECT id FROM users WHERE conviviaMember = TRUE AND role = 'MEMBER'"
+  ).all()).results;
+  if (!targets.length) return c.json({ ok: true, count: 0, message: "\uB4F1\uB85D\uB41C CONVIVIA \uD68C\uC6D0\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." });
+  const stmts = [];
+  for (const t of targets) {
+    stmts.push(c.env.DB.prepare("UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?").bind(amount, t.id));
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
+    ).bind(genId("ph-"), t.id, amount, `CONVIVIA \uD68C\uC6D0 \uC9C0\uAE09: ${reason}`));
+  }
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, count: targets.length, amount });
 });
 admin.post("/members/recalc-vvip", async (c) => {
   const promoted = await recalcVVIP(c.env.DB);
@@ -10508,15 +10578,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820k"></script>
-  <script src="/static/i18n.js?v=20260820k"></script>
-  <script src="/static/i18n-dict.js?v=20260820k"></script>
-  <script src="/static/components.js?v=20260820k"></script>
-  <script src="/static/pages.js?v=20260820k"></script>
-  <script src="/static/mypage.js?v=20260820k"></script>
-  <script src="/static/network.js?v=20260820k"></script>
-  <script src="/static/admin.js?v=20260820k"></script>
-  <script src="/static/app.js?v=20260820k"></script>
+  <script src="/static/api.js?v=20260820l"></script>
+  <script src="/static/i18n.js?v=20260820l"></script>
+  <script src="/static/i18n-dict.js?v=20260820l"></script>
+  <script src="/static/components.js?v=20260820l"></script>
+  <script src="/static/pages.js?v=20260820l"></script>
+  <script src="/static/mypage.js?v=20260820l"></script>
+  <script src="/static/network.js?v=20260820l"></script>
+  <script src="/static/admin.js?v=20260820l"></script>
+  <script src="/static/app.js?v=20260820l"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

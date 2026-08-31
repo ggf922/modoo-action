@@ -23,7 +23,7 @@ const QUOTED_COLUMNS = [
   // users
   'auctionPoint', 'balancePoint', 'wagePoint', 'referrerId', 'referralCode',
   'bankName', 'bankAccount', 'accountHolder', 'createdAt', 'updatedAt',
-  'subscriptionActive', 'subscriptionUntil', 'referralRewardPaid',
+  'subscriptionActive', 'subscriptionUntil', 'referralRewardPaid', 'conviviaMember',
   // subscription_payments
   'paidAt',
   // products

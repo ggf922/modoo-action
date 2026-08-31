@@ -1005,6 +1005,31 @@ async function pageAdminGradeGrant() {
       <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> 각 등급 카드를 누르면 해당 등급 회원 목록을 볼 수 있어요. VIP 이상 회원을 <b>5명 직접 추천</b>한 회원은 자동으로 VVIP가 됩니다. 기존 회원에게 반영하려면 위 버튼을 눌러주세요.</p>
     </div>
 
+    <div class="bg-white rounded-2xl border border-teal-100 p-5 mb-4">
+      <div class="flex items-center gap-2 mb-1">
+        <i class="fas fa-handshake text-teal-500"></i>
+        <div class="text-sm font-extrabold text-gray-700">CONVIVIA 회원 관리</div>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">관리자가 회원 중 선택하여 CONVIVIA 회원으로 등록하고, 등록된 회원 전원에게 포인트를 지급할 수 있어요.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button onclick="openConviviaRegister()" class="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-3 rounded-xl font-bold text-sm hover:opacity-90 transition">
+          <i class="fas fa-user-plus"></i> CONVIVIA회원 목록 등록
+        </button>
+        <button onclick="openConviviaMembers()" class="inline-flex items-center justify-center gap-2 bg-white border border-teal-500 text-teal-600 py-3 rounded-xl font-bold text-sm hover:bg-teal-50 transition">
+          <i class="fas fa-users"></i> 회원보기
+        </button>
+      </div>
+      <div class="mt-3 border-t border-gray-100 pt-3">
+        <div class="text-xs font-medium text-gray-500 mb-1">CONVIVIA 회원 포인트 보내기 (1인당 경매P)</div>
+        <div class="flex gap-2">
+          <input id="cv-amount" type="number" min="1" placeholder="예: 10000" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-teal-500" />
+          <button onclick="doConviviaGrant()" class="shrink-0 inline-flex items-center gap-1.5 bg-teal-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-teal-700 transition whitespace-nowrap"><i class="fas fa-paper-plane"></i> 보내기</button>
+        </div>
+        <input id="cv-reason" placeholder="사유 (선택) 예: CONVIVIA 정기 지급" class="w-full mt-2 px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-teal-500 text-sm" />
+        <p class="text-xs text-gray-400 mt-1.5 text-center">등록된 모든 CONVIVIA 회원에게 동일한 금액이 일괄 지급됩니다.</p>
+      </div>
+    </div>
+
     <div class="bg-white rounded-2xl border border-gray-100 p-5">
       <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">일괄 지급 설정</div>
       <div class="space-y-3">
@@ -1078,6 +1103,150 @@ async function openGradeMembers(grade) {
           </div>
         </button>`).join('')}
     </div>`
+}
+
+// ===== CONVIVIA 회원 관리 =====
+// (1) CONVIVIA 회원 목록 등록 — 회원 검색 후 선택하여 등록
+async function openConviviaRegister() {
+  openModal(`<div class="p-6">
+    <div class="flex items-center gap-2 mb-3">
+      <i class="fas fa-user-plus text-teal-500"></i>
+      <h3 class="font-extrabold text-lg">CONVIVIA회원 목록 등록</h3>
+    </div>
+    <div class="flex gap-2 mb-3">
+      <input id="cv-search" placeholder="이름·닉네임·이메일 검색" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-teal-500 text-sm" />
+      <button onclick="loadConviviaCandidates()" class="shrink-0 bg-teal-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-search"></i></button>
+    </div>
+    <div id="cv-cand-body" class="text-center text-gray-400 py-8">
+      <i class="fas fa-spinner fa-spin text-2xl text-teal-500"></i>
+      <p class="mt-2 text-sm">불러오는 중...</p>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-bold text-sm">닫기</button>
+      <button id="cv-register-btn" onclick="doConviviaRegister()" class="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-2.5 rounded-xl font-bold text-sm"><i class="fas fa-check"></i> 선택 회원 등록</button>
+    </div>
+  </div>`, { maxWidth: 'max-w-lg' })
+  const inp = document.getElementById('cv-search')
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadConviviaCandidates() })
+  loadConviviaCandidates()
+}
+
+async function loadConviviaCandidates() {
+  const body = document.getElementById('cv-cand-body')
+  if (!body) return
+  const q = (document.getElementById('cv-search') || {}).value || ''
+  body.className = 'text-center text-gray-400 py-8'
+  body.innerHTML = `<i class="fas fa-spinner fa-spin text-2xl text-teal-500"></i>`
+  let members = []
+  try {
+    members = (await api.get('/admin/convivia/candidates?q=' + encodeURIComponent(q))).data.members || []
+  } catch (err) {
+    body.innerHTML = `<p class="text-red-500 text-sm py-6">${errMsg(err)}</p>`
+    return
+  }
+  if (!members.length) {
+    body.className = ''
+    body.innerHTML = `<div class="text-center text-gray-300 text-sm py-8">등록 가능한 회원이 없습니다.</div>`
+    return
+  }
+  body.className = 'max-h-[45vh] overflow-y-auto -mx-1 px-1'
+  body.innerHTML = `<div class="space-y-1.5">
+    ${members.map(m => `
+      <label class="flex items-center gap-3 bg-gray-50 hover:bg-teal-50 rounded-xl px-3 py-2.5 cursor-pointer transition">
+        <input type="checkbox" class="cv-cand-chk w-4 h-4 accent-teal-600" value="${m.id}" />
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white font-bold shrink-0">${(m.name || '?').charAt(0)}</div>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-bold text-gray-700 truncate">${m.name || '-'} <span class="text-xs font-normal text-gray-400">@${m.nickname || ''}</span></div>
+          <div class="text-[11px] text-gray-400 truncate">${m.email || ''} · ${gradeInfo(m.grade).label}</div>
+        </div>
+      </label>`).join('')}
+  </div>`
+}
+
+async function doConviviaRegister() {
+  const ids = Array.from(document.querySelectorAll('.cv-cand-chk:checked')).map(el => el.value)
+  if (!ids.length) { toast('등록할 회원을 선택해주세요.', 'warn'); return }
+  if (!confirm(`${ids.length}명을 CONVIVIA 회원으로 등록하시겠습니까?`)) return
+  const btn = document.getElementById('cv-register-btn')
+  if (btn) btn.disabled = true
+  try {
+    const { data } = await api.post('/admin/convivia/register', { ids })
+    toast(`${data.count}명을 CONVIVIA 회원으로 등록했어요! 🤝`, 'success')
+    closeModal()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+}
+
+// (2) 등록된 모든 CONVIVIA 회원 보기 (등록 해제 포함)
+async function openConviviaMembers() {
+  openModal(`<div class="p-6">
+    <div class="flex items-center gap-2 mb-4">
+      <i class="fas fa-users text-teal-500"></i>
+      <h3 class="font-extrabold text-lg">CONVIVIA 회원 목록</h3>
+    </div>
+    <div id="cv-list-body" class="text-center text-gray-400 py-10">
+      <i class="fas fa-spinner fa-spin text-2xl text-teal-500"></i>
+      <p class="mt-2 text-sm">불러오는 중...</p>
+    </div>
+    <button onclick="closeModal()" class="w-full mt-4 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-bold text-sm">닫기</button>
+  </div>`, { maxWidth: 'max-w-lg' })
+  loadConviviaMembers()
+}
+
+async function loadConviviaMembers() {
+  const body = document.getElementById('cv-list-body')
+  if (!body) return
+  let members = []
+  try {
+    members = (await api.get('/admin/convivia')).data.members || []
+  } catch (err) {
+    body.className = ''
+    body.innerHTML = `<p class="text-red-500 text-sm py-6">${errMsg(err)}</p>`
+    return
+  }
+  if (!members.length) {
+    body.className = ''
+    body.innerHTML = `<div class="text-center text-gray-300 text-sm py-10">등록된 CONVIVIA 회원이 없습니다.</div>`
+    return
+  }
+  body.className = 'max-h-[55vh] overflow-y-auto -mx-1 px-1'
+  body.innerHTML = `
+    <div class="text-xs text-gray-400 mb-2">총 <b class="text-teal-600">${members.length}명</b></div>
+    <div class="space-y-1.5">
+      ${members.map(m => `
+        <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white font-bold shrink-0">${(m.name || '?').charAt(0)}</div>
+          <button type="button" onclick="closeModal(); openMemberDetail('${m.id}')" class="min-w-0 flex-1 text-left">
+            <div class="text-sm font-bold text-gray-700 truncate">${m.name || '-'} <span class="text-xs font-normal text-gray-400">@${m.nickname || ''}</span></div>
+            <div class="text-[11px] text-gray-400 truncate">${m.email || ''} · ${won(m.auctionPoint || 0)}P</div>
+          </button>
+          <button type="button" onclick="doConviviaUnregister('${m.id}', this)" class="shrink-0 bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition whitespace-nowrap"><i class="fas fa-user-minus"></i> 해제</button>
+        </div>`).join('')}
+    </div>`
+}
+
+async function doConviviaUnregister(id, btn) {
+  if (!confirm('이 회원을 CONVIVIA 회원에서 해제하시겠습니까?')) return
+  if (btn) btn.disabled = true
+  try {
+    await api.post('/admin/convivia/' + id + '/unregister', {})
+    toast('CONVIVIA 회원에서 해제했어요.', 'success')
+    loadConviviaMembers()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+}
+
+// (3) CONVIVIA 회원 전원에게 포인트 보내기
+async function doConviviaGrant() {
+  const amount = Number((document.getElementById('cv-amount') || {}).value)
+  const reason = (document.getElementById('cv-reason') || {}).value || ''
+  if (!amount || amount <= 0) { toast('지급 금액을 올바르게 입력해주세요.', 'warn'); return }
+  if (!confirm(`등록된 모든 CONVIVIA 회원에게 경매P ${won(amount)}을(를) 일괄 지급하시겠습니까?`)) return
+  try {
+    const { data } = await api.post('/admin/convivia/grant', { amount, reason })
+    if (data.count === 0) { toast(data.message || '등록된 CONVIVIA 회원이 없습니다.', 'warn'); return }
+    toast(`CONVIVIA 회원 ${data.count}명에게 ${won(amount)} 지급 완료`, 'success')
+    const a = document.getElementById('cv-amount'); if (a) a.value = ''
+    const r = document.getElementById('cv-reason'); if (r) r.value = ''
+  } catch (err) { toast(errMsg(err), 'error') }
 }
 
 // VVIP 자동 승급 재계산 (기존 회원 소급 적용)

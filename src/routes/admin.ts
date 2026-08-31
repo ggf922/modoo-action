@@ -32,6 +32,14 @@ async function ensurePointReversalColumns(DB: any) {
   _phReversalReady = true
 }
 
+// CONVIVIA 회원 지정용 컬럼 (관리자가 회원 중 선택하여 등록)
+let _conviviaReady = false
+async function ensureConviviaColumn(DB: any) {
+  if (_conviviaReady) return
+  await DB.prepare(`ALTER TABLE users ADD COLUMN IF NOT EXISTS conviviaMember BOOLEAN DEFAULT FALSE`).run()
+  _conviviaReady = true
+}
+
 // 대시보드 KPI
 admin.get('/stats', async (c) => {
   const db = c.env.DB
@@ -430,6 +438,83 @@ admin.post('/members/grade-grant', async (c) => {
   }
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, count: targets.length, amount, grade })
+})
+
+// ===== CONVIVIA 회원 관리 =====
+// 등록된 CONVIVIA 회원 목록 조회
+admin.get('/convivia', async (c) => {
+  await ensureConviviaColumn(c.env.DB)
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, email, name, nickname, grade, auctionPoint
+     FROM users WHERE conviviaMember = TRUE AND role = 'MEMBER'
+     ORDER BY name ASC`
+  ).all()).results
+  return c.json({ members: rows })
+})
+
+// CONVIVIA 등록 후보 검색 — 아직 등록되지 않은 일반 회원 (검색어 q 지원)
+admin.get('/convivia/candidates', async (c) => {
+  await ensureConviviaColumn(c.env.DB)
+  const q = (c.req.query('q') || '').trim()
+  let sql = `SELECT id, email, name, nickname, grade, auctionPoint
+             FROM users WHERE role = 'MEMBER' AND (conviviaMember IS NULL OR conviviaMember = FALSE)`
+  const binds: any[] = []
+  if (q) {
+    sql += ' AND (email LIKE ? OR name LIKE ? OR nickname LIKE ?)'
+    binds.push(`%${q}%`, `%${q}%`, `%${q}%`)
+  }
+  sql += ' ORDER BY name ASC LIMIT 100'
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all()).results
+  return c.json({ members: rows })
+})
+
+// CONVIVIA 회원 일괄 등록 (회원 id 배열)
+admin.post('/convivia/register', async (c) => {
+  await ensureConviviaColumn(c.env.DB)
+  const b = await c.req.json().catch(() => null)
+  const ids: string[] = Array.isArray(b?.ids) ? b.ids.filter((x: any) => typeof x === 'string' && x) : []
+  if (!ids.length) return c.json({ error: '등록할 회원을 선택해주세요.' }, 400)
+  const stmts = ids.map(id =>
+    c.env.DB.prepare("UPDATE users SET conviviaMember = TRUE WHERE id = ? AND role = 'MEMBER'").bind(id)
+  )
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true, count: ids.length })
+})
+
+// CONVIVIA 회원 등록 해제 (단일 회원)
+admin.post('/convivia/:id/unregister', async (c) => {
+  await ensureConviviaColumn(c.env.DB)
+  const id = c.req.param('id')
+  const res = await c.env.DB.prepare('UPDATE users SET conviviaMember = FALSE WHERE id = ?').bind(id).run()
+  const changes = res.meta?.changes ?? res.changes ?? 0
+  if (!changes) return c.json({ error: '해당 회원을 찾을 수 없습니다.' }, 404)
+  return c.json({ ok: true })
+})
+
+// CONVIVIA 회원 전원에게 경매포인트 일괄 지급
+admin.post('/convivia/grant', async (c) => {
+  await ensureConviviaColumn(c.env.DB)
+  const b = await c.req.json().catch(() => null)
+  const amount = Number(b?.amount)
+  const reason = b?.reason ? String(b.reason).trim() : 'CONVIVIA 회원 지급'
+  if (!amount || isNaN(amount) || amount <= 0) return c.json({ error: '지급 금액을 올바르게 입력해주세요.' }, 400)
+
+  const targets = (await c.env.DB.prepare(
+    "SELECT id FROM users WHERE conviviaMember = TRUE AND role = 'MEMBER'"
+  ).all<{ id: string }>()).results
+
+  if (!targets.length) return c.json({ ok: true, count: 0, message: '등록된 CONVIVIA 회원이 없습니다.' })
+
+  const stmts: D1PreparedStatement[] = []
+  for (const t of targets) {
+    stmts.push(c.env.DB.prepare('UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?').bind(amount, t.id))
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
+    ).bind(genId('ph-'), t.id, amount, `CONVIVIA 회원 지급: ${reason}`))
+  }
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true, count: targets.length, amount })
 })
 
 // VVIP 자동 승급 재계산 (기존 회원 소급 적용)
