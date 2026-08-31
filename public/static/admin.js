@@ -990,13 +990,19 @@ async function pageAdminGradeGrant() {
         <button onclick="doRecalcVVIP()" class="bg-white border border-purple-500 text-purple-600 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap hover:bg-purple-50"><i class="fas fa-crown"></i> VVIP 자동 승급 반영</button>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        ${GRADE_ORDER.map(g => `
-          <div class="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5">
-            <div>${gradeBadge(g)}</div>
-            <div class="font-extrabold text-gray-700">${stats[g] || 0}<span class="text-xs font-normal text-gray-400">명</span></div>
-          </div>`).join('')}
+        ${GRADE_ORDER.map(g => {
+          const cnt = stats[g] || 0
+          const clickable = cnt > 0
+          return `
+          <button type="button" ${clickable ? `onclick="openGradeMembers('${g}')"` : 'disabled'}
+            class="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2.5 text-left w-full transition ${clickable ? 'hover:bg-orange-50 hover:ring-1 hover:ring-brand-orange cursor-pointer' : 'opacity-60 cursor-default'}"
+            title="${clickable ? gradeInfo(g).label + ' 회원 목록 보기' : '해당 등급 회원이 없습니다'}">
+            <div class="flex items-center gap-1.5">${gradeBadge(g)}${clickable ? '<i class="fas fa-chevron-right text-[10px] text-gray-300"></i>' : ''}</div>
+            <div class="font-extrabold text-gray-700">${cnt}<span class="text-xs font-normal text-gray-400">명</span></div>
+          </button>`
+        }).join('')}
       </div>
-      <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> VIP 이상 회원을 <b>5명 직접 추천</b>한 회원은 자동으로 VVIP가 됩니다. 기존 회원에게 반영하려면 위 버튼을 눌러주세요.</p>
+      <p class="text-xs text-gray-400 mt-2"><i class="fas fa-circle-info"></i> 각 등급 카드를 누르면 해당 등급 회원 목록을 볼 수 있어요. VIP 이상 회원을 <b>5명 직접 추천</b>한 회원은 자동으로 VVIP가 됩니다. 기존 회원에게 반영하려면 위 버튼을 눌러주세요.</p>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 p-5">
@@ -1020,6 +1026,58 @@ async function pageAdminGradeGrant() {
       <button onclick="doGradeGrant()" class="w-full mt-4 bg-brand-orange text-white py-3 rounded-xl font-bold"><i class="fas fa-paper-plane"></i> 해당 등급 회원에게 일괄 지급</button>
       <p class="text-xs text-gray-400 mt-2 text-center">선택한 등급의 모든 회원에게 동일한 금액이 일괄 지급됩니다.</p>
     </div>`)
+}
+
+// 등급별 회원 목록 보기 (등급 카드 클릭)
+async function openGradeMembers(grade) {
+  const info = (typeof gradeInfo === 'function') ? gradeInfo(grade) : { label: grade, icon: 'fa-user' }
+  openModal(`<div class="p-6">
+    <div class="flex items-center gap-2 mb-4">
+      <i class="fas ${info.icon} text-brand-orange"></i>
+      <h3 class="font-extrabold text-lg">${info.label} 회원 목록</h3>
+    </div>
+    <div id="grade-members-body" class="text-center text-gray-400 py-10">
+      <i class="fas fa-spinner fa-spin text-2xl text-brand-orange"></i>
+      <p class="mt-2 text-sm">불러오는 중...</p>
+    </div>
+    <button onclick="closeModal()" class="w-full mt-4 bg-gray-100 text-gray-600 py-2.5 rounded-xl font-bold text-sm">닫기</button>
+  </div>`, { maxWidth: 'max-w-lg' })
+
+  let members = []
+  try {
+    members = (await api.get('/admin/members?grade=' + encodeURIComponent(grade))).data.members || []
+  } catch (err) {
+    const el = document.getElementById('grade-members-body')
+    if (el) el.innerHTML = `<p class="text-red-500 text-sm py-6">${errMsg(err)}</p>`
+    return
+  }
+
+  const body = document.getElementById('grade-members-body')
+  if (!body) return
+  if (!members.length) {
+    body.className = ''
+    body.innerHTML = `<div class="text-center text-gray-300 text-sm py-10">해당 등급 회원이 없습니다.</div>`
+    return
+  }
+
+  body.className = 'max-h-[55vh] overflow-y-auto -mx-1 px-1'
+  body.innerHTML = `
+    <div class="text-xs text-gray-400 mb-2">총 <b class="text-gray-600">${members.length}명</b> · 회원을 누르면 상세 정보가 열려요</div>
+    <div class="space-y-1.5">
+      ${members.map(m => `
+        <button type="button" onclick="closeModal(); openMemberDetail('${m.id}')"
+          class="w-full flex items-center gap-3 bg-gray-50 hover:bg-orange-50 rounded-xl px-3 py-2.5 text-left transition">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-orange to-brand-gold flex items-center justify-center text-white font-bold shrink-0">${(m.name || '?').charAt(0)}</div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-bold text-gray-700 truncate">${m.name || '-'} <span class="text-xs font-normal text-gray-400">@${m.nickname || ''}</span></div>
+            <div class="text-[11px] text-gray-400 truncate">${m.email || ''}</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-sm font-bold text-brand-orange">${won(m.auctionPoint || 0)}P</div>
+            <div class="text-[10px] text-gray-400"><i class="fas fa-chevron-right"></i></div>
+          </div>
+        </button>`).join('')}
+    </div>`
 }
 
 // VVIP 자동 승급 재계산 (기존 회원 소급 적용)

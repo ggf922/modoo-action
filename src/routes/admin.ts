@@ -271,6 +271,13 @@ admin.get('/members', async (c) => {
     conds.push('(u.email LIKE ? OR u.name LIKE ? OR u.nickname LIKE ?)')
     binds.push(`%${q}%`, `%${q}%`, `%${q}%`)
   }
+  // 등급 필터 (선택) — 등급별 회원 목록 조회용. 미지정 시 기존 동작 그대로.
+  const gradeFilter = (c.req.query('grade') || '').trim()
+  const VALID_GRADES = ['NORMAL', 'VIP', 'VVIP', 'AGENCY', 'DISTRIBUTOR', 'DIRECTOR']
+  if (gradeFilter && VALID_GRADES.includes(gradeFilter)) {
+    conds.push("u.grade = ? AND u.role = 'MEMBER'")
+    binds.push(gradeFilter)
+  }
   if (from) { conds.push('u.createdAt >= ?'); binds.push(`${from} 00:00:00`) }
   if (to) { conds.push('u.createdAt <= ?'); binds.push(`${to} 23:59:59.999`) }
   if (conds.length) sql += ' WHERE ' + conds.join(' AND ')

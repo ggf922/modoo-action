@@ -9825,6 +9825,12 @@ admin.get("/members", async (c) => {
     conds.push("(u.email LIKE ? OR u.name LIKE ? OR u.nickname LIKE ?)");
     binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
+  const gradeFilter = (c.req.query("grade") || "").trim();
+  const VALID_GRADES = ["NORMAL", "VIP", "VVIP", "AGENCY", "DISTRIBUTOR", "DIRECTOR"];
+  if (gradeFilter && VALID_GRADES.includes(gradeFilter)) {
+    conds.push("u.grade = ? AND u.role = 'MEMBER'");
+    binds.push(gradeFilter);
+  }
   if (from) {
     conds.push("u.createdAt >= ?");
     binds.push(`${from} 00:00:00`);
@@ -10502,15 +10508,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820j"></script>
-  <script src="/static/i18n.js?v=20260820j"></script>
-  <script src="/static/i18n-dict.js?v=20260820j"></script>
-  <script src="/static/components.js?v=20260820j"></script>
-  <script src="/static/pages.js?v=20260820j"></script>
-  <script src="/static/mypage.js?v=20260820j"></script>
-  <script src="/static/network.js?v=20260820j"></script>
-  <script src="/static/admin.js?v=20260820j"></script>
-  <script src="/static/app.js?v=20260820j"></script>
+  <script src="/static/api.js?v=20260820k"></script>
+  <script src="/static/i18n.js?v=20260820k"></script>
+  <script src="/static/i18n-dict.js?v=20260820k"></script>
+  <script src="/static/components.js?v=20260820k"></script>
+  <script src="/static/pages.js?v=20260820k"></script>
+  <script src="/static/mypage.js?v=20260820k"></script>
+  <script src="/static/network.js?v=20260820k"></script>
+  <script src="/static/admin.js?v=20260820k"></script>
+  <script src="/static/app.js?v=20260820k"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;
