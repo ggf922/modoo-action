@@ -1326,15 +1326,43 @@ function renderGrantHistoryItem(h) {
     const who = h.userName ? `${h.userName}${h.userNickname ? '(@' + h.userNickname + ')' : ''}` : '(삭제된 회원)'
     sub = `대상 ${who}`
   }
+  // 등급 일괄 지급/구독료 배치는 회수(되돌리기) 가능
+  let revertBtn = ''
+  if ((h.kind === 'GRANT' || h.kind === 'SUBSCRIPTION')) {
+    if (h.reversible) {
+      const payload = encodeURIComponent(JSON.stringify({ description: h.description || '', createdAt: h.createdAt || '', label: (h.description || ''), count: h.count || 0 }))
+      revertBtn = `<button onclick="revertGrantBatch('${payload}', this)" class="shrink-0 inline-flex items-center gap-1 bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition whitespace-nowrap"><i class="fas fa-rotate-left"></i> 회수</button>`
+    } else {
+      revertBtn = `<span class="shrink-0 inline-flex items-center gap-1 text-xs text-gray-400 font-bold px-2 py-1.5"><i class="fas fa-check"></i> 회수됨</span>`
+    }
+  }
   return `
     <div class="bg-gray-50 rounded-xl p-3">
       <div class="flex items-center justify-between gap-2 mb-1">
         <div class="flex items-center gap-2">${badge}<span class="text-xs text-gray-400">${fmtDateTime(h.createdAt)}</span></div>
-        <div class="font-extrabold ${amountColor} whitespace-nowrap">${sign}${won(amt)}P</div>
+        <div class="flex items-center gap-2">
+          <div class="font-extrabold ${amountColor} whitespace-nowrap">${sign}${won(amt)}P</div>
+          ${revertBtn}
+        </div>
       </div>
       <div class="text-sm text-gray-600">${h.description || '-'}</div>
       <div class="text-xs text-gray-400 mt-0.5">${sub}</div>
     </div>`
+}
+
+// 등급 일괄 지급 배치 회수(되돌리기) — 잘못 지급한 일괄 내역을 통째로 회수
+async function revertGrantBatch(payloadEnc, btn) {
+  let p
+  try { p = JSON.parse(decodeURIComponent(payloadEnc)) } catch (e) { return }
+  const label = p.label || '해당 일괄 지급'
+  if (!confirm(`[${label}]\n대상 ${won(p.count || 0)}명에게 지급했던 포인트를 모두 회수(되돌리기)합니다.\n\n진행하시겠습니까?`)) return
+  if (btn) btn.disabled = true
+  try {
+    const { data } = await api.post('/admin/grant-history/revert-batch', { description: p.description, createdAt: p.createdAt })
+    if (data.count === 0) { toast(data.message || '되돌릴 수 있는 내역이 없습니다.', 'warn'); if (btn) btn.disabled = false; return }
+    toast(`${data.count}명에게서 총 ${won(data.totalReverted || 0)}P 회수 완료`, 'success')
+    await reloadGrantHistory()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
 }
 
 async function openGrantHistory() {

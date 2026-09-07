@@ -440,6 +440,64 @@ admin.post('/members/grade-grant', async (c) => {
   return c.json({ ok: true, count: targets.length, amount, grade })
 })
 
+// 등급별 일괄 지급 배치 회수(되돌리기)
+//  · 지급 내역에서 잘못 지급한 "등급 일괄지급" 또는 "월 구독료" 배치를 통째로 되돌린다.
+//  · 배치는 (설명 description + 초 단위 시각) 으로 식별한다.
+//  · 각 회원별로 지급했던 금액을 반대로 상쇄하여 잔액을 복구하고,
+//    원본 이력에 reversedAt 을 기록, 상쇄 기록(reversalOf)을 남긴다.
+//  · 이미 되돌려진 이력, 상쇄 기록은 제외한다. 회수 후 음수가 되는 회원은 건너뛰지 않고 0까지만 회수.
+admin.post('/grant-history/revert-batch', async (c) => {
+  await ensurePointReversalColumns(c.env.DB)
+  const b = await c.req.json().catch(() => null)
+  const description = String(b?.description ?? '').trim()
+  const createdAt = String(b?.createdAt ?? '').trim()
+  if (!description || !createdAt) return c.json({ error: '회수할 지급 내역 정보가 올바르지 않습니다.' }, 400)
+
+  // 배치 식별: 같은 설명 + 같은 "초"에 생성된 ADMIN_ADJ 이력들.
+  //  createdAt 은 프론트에서 받은 값(직렬화 형식이 다양)이므로 Date 로 파싱해
+  //  [해당 초, 다음 초) 시간 범위로 조회한다. (createdAt 텍스트 형식 의존 제거)
+  const d = new Date(createdAt)
+  if (isNaN(d.getTime())) return c.json({ error: '회수할 지급 내역 시각이 올바르지 않습니다.' }, 400)
+  const startMs = Math.floor(d.getTime() / 1000) * 1000   // 해당 초의 시작
+  const start = new Date(startMs).toISOString()           // 예: 2026-09-07T01:58:36.000Z
+  const end = new Date(startMs + 1000).toISOString()      // 다음 초
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, userId, amount, reversedAt, reversalOf
+     FROM point_history
+     WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`
+  ).bind(description, start, end).all<{ id: string; userId: string; amount: number; reversedAt: string | null; reversalOf: string | null }>()).results
+
+  // 되돌릴 수 있는 원본만 필터 (이미 되돌림/상쇄기록 제외, 금액 0 제외)
+  const targets = rows.filter(r => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0)
+  if (!targets.length) return c.json({ ok: true, count: 0, message: '되돌릴 수 있는 지급 내역이 없습니다. (이미 회수되었을 수 있습니다.)' })
+
+  const stmts: D1PreparedStatement[] = []
+  let reverted = 0
+  let totalReverted = 0
+  for (const r of targets) {
+    const amount = Number(r.amount)
+    const revertAmount = -amount // 반대 방향 상쇄
+    // 잔액이 음수가 되지 않는 만큼만 회수 (부족하면 보유분까지만 차감)
+    stmts.push(
+      c.env.DB.prepare(
+        `UPDATE users SET auctionPoint = CASE
+           WHEN auctionPoint + ? >= 0 THEN auctionPoint + ?
+           ELSE 0 END
+         WHERE id = ?`
+      ).bind(revertAmount, revertAmount, r.userId)
+    )
+    stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id))
+    stmts.push(c.env.DB.prepare(
+      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
+       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
+    ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`, r.id))
+    reverted++
+    totalReverted += Math.abs(amount)
+  }
+  await c.env.DB.batch(stmts)
+  return c.json({ ok: true, count: reverted, totalReverted })
+})
+
 // ===== CONVIVIA 회원 관리 =====
 // 등록된 CONVIVIA 회원 목록 조회
 admin.get('/convivia', async (c) => {
@@ -605,20 +663,23 @@ admin.get('/grant-history', async (c) => {
 
   // ADMIN_ADJ(관리자 지급/회수) 전체를 회원명과 함께 최근순으로 조회.
   // (일괄 배치는 같은 초에 다수 행이 생기므로, 그룹핑을 위해 상한을 넉넉히 둔다.)
+  await ensurePointReversalColumns(c.env.DB)
   const rows = (await c.env.DB.prepare(
     `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+            ph.reversedAt, ph.reversalOf,
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
      LEFT JOIN users u ON u.id = ph.userId
      WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
      LIMIT 20000`
-  ).bind(...binds).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; userName: string; userNickname: string }>()).results
+  ).bind(...binds).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; reversedAt: string | null; reversalOf: string | null; userName: string; userNickname: string }>()).results
 
   type Item = {
     kind: 'GRANT' | 'SUBSCRIPTION' | 'INDIVIDUAL'
     description: string; createdAt: string; count: number; totalAmount: number
     userName?: string; userNickname?: string
+    reversible?: boolean   // 배치 중 아직 되돌리지 않은 원본이 있으면 true
   }
   const batches = new Map<string, Item>()  // 일괄/구독료 배치 그룹
   const items: Item[] = []                  // 최종 목록(개별 + 배치)
@@ -632,10 +693,12 @@ admin.get('/grant-history', async (c) => {
       // 같은 배치(설명+초 단위 시각)로 그룹핑
       const sec = String(r.createdAt).slice(0, 19)
       const key = `${desc}||${sec}`
+      // 아직 되돌리지 않은 원본(reversedAt 없음, 상쇄기록 아님)이면 되돌리기 가능
+      const canRevert = !r.reversedAt && !r.reversalOf && amt !== 0
       const g = batches.get(key)
-      if (g) { g.count++; g.totalAmount += amt }
+      if (g) { g.count++; g.totalAmount += amt; if (canRevert) g.reversible = true }
       else {
-        const item: Item = { kind: isSub ? 'SUBSCRIPTION' : 'GRANT', description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt }
+        const item: Item = { kind: isSub ? 'SUBSCRIPTION' : 'GRANT', description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt, reversible: canRevert }
         batches.set(key, item)
         items.push(item)   // 배치의 첫 등장 위치(최근순)에 삽입 → 순서 유지
       }
