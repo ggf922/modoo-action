@@ -10132,17 +10132,31 @@ admin.get("/grant-history", async (c) => {
       binds.push(`${to} 23:59:59.999`);
     }
     const whereSql = conds.join(" AND ");
-    await ensurePointReversalColumns(c.env.DB);
-    const rows = (await c.env.DB.prepare(
-      `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+    try {
+      await ensurePointReversalColumns(c.env.DB);
+    } catch (_) {
+    }
+    const selectWith = `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
             ph.reversedAt, ph.reversalOf,
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
      LEFT JOIN users u ON u.id = ph.userId
      WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
-     LIMIT 20000`
-    ).bind(...binds).all()).results;
+     LIMIT 20000`;
+    const selectWithout = `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+            u.name AS "userName", u.nickname AS "userNickname"
+     FROM point_history ph
+     LEFT JOIN users u ON u.id = ph.userId
+     WHERE ${whereSql}
+     ORDER BY ph.createdAt DESC
+     LIMIT 20000`;
+    let rows;
+    try {
+      rows = (await c.env.DB.prepare(selectWith).bind(...binds).all()).results;
+    } catch (_) {
+      rows = (await c.env.DB.prepare(selectWithout).bind(...binds).all()).results;
+    }
     const batches = /* @__PURE__ */ new Map();
     const items = [];
     for (const r of rows) {

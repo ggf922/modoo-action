@@ -664,9 +664,11 @@ admin.get('/grant-history', async (c) => {
 
   // ADMIN_ADJ(관리자 지급/회수) 전체를 회원명과 함께 최근순으로 조회.
   // (일괄 배치는 같은 초에 다수 행이 생기므로, 그룹핑을 위해 상한을 넉넉히 둔다.)
-  await ensurePointReversalColumns(c.env.DB)
-  const rows = (await c.env.DB.prepare(
-    `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+  //  reversedAt/reversalOf 컬럼이 아직 없는 DB 에서도 목록이 뜨도록 방어적으로 조회한다.
+  //  1) 되돌리기 컬럼 준비 시도(실패해도 무시)  2) 컬럼 포함 SELECT  3) 실패 시 컬럼 없이 재시도
+  try { await ensurePointReversalColumns(c.env.DB) } catch (_) { /* 컬럼 준비 실패해도 목록은 보여준다 */ }
+
+  const selectWith = `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
             ph.reversedAt, ph.reversalOf,
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
@@ -674,7 +676,20 @@ admin.get('/grant-history', async (c) => {
      WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
      LIMIT 20000`
-  ).bind(...binds).all<{ id: string; userId: string; amount: number; description: string; createdAt: string; reversedAt: string | null; reversalOf: string | null; userName: string; userNickname: string }>()).results
+  const selectWithout = `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+            u.name AS "userName", u.nickname AS "userNickname"
+     FROM point_history ph
+     LEFT JOIN users u ON u.id = ph.userId
+     WHERE ${whereSql}
+     ORDER BY ph.createdAt DESC
+     LIMIT 20000`
+  let rows: any[]
+  try {
+    rows = (await c.env.DB.prepare(selectWith).bind(...binds).all()).results
+  } catch (_) {
+    // reversedAt/reversalOf 컬럼이 없어 실패하는 경우 → 해당 컬럼 없이 재조회(되돌리기 표시는 비활성)
+    rows = (await c.env.DB.prepare(selectWithout).bind(...binds).all()).results
+  }
 
   type Item = {
     kind: 'GRANT' | 'SUBSCRIPTION' | 'INDIVIDUAL'
