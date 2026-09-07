@@ -447,7 +447,10 @@ admin.post('/members/grade-grant', async (c) => {
 //    원본 이력에 reversedAt 을 기록, 상쇄 기록(reversalOf)을 남긴다.
 //  · 이미 되돌려진 이력, 상쇄 기록은 제외한다. 회수 후 음수가 되는 회원은 건너뛰지 않고 0까지만 회수.
 admin.post('/grant-history/revert-batch', async (c) => {
-  await ensurePointReversalColumns(c.env.DB)
+ try {
+  // 되돌리기 컬럼 준비. 실패해도 진행하되, 컬럼이 없으면 아래 조회에서 폴백 처리.
+  let hasReversalCols = true
+  try { await ensurePointReversalColumns(c.env.DB) } catch (_) { hasReversalCols = false }
   const b = await c.req.json().catch(() => null)
   const description = String(b?.description ?? '').trim()
   const createdAt = String(b?.createdAt ?? '').trim()
@@ -461,11 +464,20 @@ admin.post('/grant-history/revert-batch', async (c) => {
   const startMs = Math.floor(d.getTime() / 1000) * 1000   // 해당 초의 시작
   const start = new Date(startMs).toISOString()           // 예: 2026-09-07T01:58:36.000Z
   const end = new Date(startMs + 1000).toISOString()      // 다음 초
-  const rows = (await c.env.DB.prepare(
-    `SELECT id, userId, amount, reversedAt, reversalOf
+  const selWith = `SELECT id, userId, amount, reversedAt, reversalOf
      FROM point_history
      WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`
-  ).bind(description, start, end).all<{ id: string; userId: string; amount: number; reversedAt: string | null; reversalOf: string | null }>()).results
+  const selWithout = `SELECT id, userId, amount
+     FROM point_history
+     WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`
+  let rows: any[]
+  try {
+    rows = (await c.env.DB.prepare(hasReversalCols ? selWith : selWithout).bind(description, start, end).all()).results
+  } catch (_) {
+    // reversedAt/reversalOf 컬럼이 없어 실패 → 없이 재조회
+    hasReversalCols = false
+    rows = (await c.env.DB.prepare(selWithout).bind(description, start, end).all()).results
+  }
 
   // 되돌릴 수 있는 원본만 필터 (이미 되돌림/상쇄기록 제외, 금액 0 제외)
   const targets = rows.filter(r => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0)
@@ -486,16 +498,29 @@ admin.post('/grant-history/revert-batch', async (c) => {
          WHERE id = ?`
       ).bind(revertAmount, revertAmount, r.userId)
     )
-    stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id))
-    stmts.push(c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
-       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
-    ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`, r.id))
+    if (hasReversalCols) {
+      // 원본을 "되돌림 처리됨"으로 표시 + 상쇄 기록 추가 (감사 추적/중복 회수 방지)
+      stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id))
+      stmts.push(c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`, r.id))
+    } else {
+      // 되돌리기 컬럼이 없는 경우: 상쇄 기록만 남긴다(reversalOf 없이). 중복 회수 방지는 못하지만 잔액은 정확히 복구.
+      stmts.push(c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`))
+    }
     reverted++
     totalReverted += Math.abs(amount)
   }
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, count: reverted, totalReverted })
+ } catch (e: any) {
+  // 진단용: 실제 에러 메시지 반환 (임시)
+  return c.json({ error: '회수 처리 실패: ' + (e?.message || String(e)) }, 500)
+ }
 })
 
 // ===== CONVIVIA 회원 관리 =====

@@ -9957,47 +9957,71 @@ admin.post("/members/grade-grant", async (c) => {
   return c.json({ ok: true, count: targets.length, amount, grade });
 });
 admin.post("/grant-history/revert-batch", async (c) => {
-  await ensurePointReversalColumns(c.env.DB);
-  const b2 = await c.req.json().catch(() => null);
-  const description = String(b2?.description ?? "").trim();
-  const createdAt = String(b2?.createdAt ?? "").trim();
-  if (!description || !createdAt) return c.json({ error: "\uD68C\uC218\uD560 \uC9C0\uAE09 \uB0B4\uC5ED \uC815\uBCF4\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
-  const d = new Date(createdAt);
-  if (isNaN(d.getTime())) return c.json({ error: "\uD68C\uC218\uD560 \uC9C0\uAE09 \uB0B4\uC5ED \uC2DC\uAC01\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
-  const startMs = Math.floor(d.getTime() / 1e3) * 1e3;
-  const start = new Date(startMs).toISOString();
-  const end = new Date(startMs + 1e3).toISOString();
-  const rows = (await c.env.DB.prepare(
-    `SELECT id, userId, amount, reversedAt, reversalOf
+  try {
+    let hasReversalCols = true;
+    try {
+      await ensurePointReversalColumns(c.env.DB);
+    } catch (_) {
+      hasReversalCols = false;
+    }
+    const b2 = await c.req.json().catch(() => null);
+    const description = String(b2?.description ?? "").trim();
+    const createdAt = String(b2?.createdAt ?? "").trim();
+    if (!description || !createdAt) return c.json({ error: "\uD68C\uC218\uD560 \uC9C0\uAE09 \uB0B4\uC5ED \uC815\uBCF4\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
+    const d = new Date(createdAt);
+    if (isNaN(d.getTime())) return c.json({ error: "\uD68C\uC218\uD560 \uC9C0\uAE09 \uB0B4\uC5ED \uC2DC\uAC01\uC774 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." }, 400);
+    const startMs = Math.floor(d.getTime() / 1e3) * 1e3;
+    const start = new Date(startMs).toISOString();
+    const end = new Date(startMs + 1e3).toISOString();
+    const selWith = `SELECT id, userId, amount, reversedAt, reversalOf
      FROM point_history
-     WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`
-  ).bind(description, start, end).all()).results;
-  const targets = rows.filter((r) => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0);
-  if (!targets.length) return c.json({ ok: true, count: 0, message: "\uB418\uB3CC\uB9B4 \uC218 \uC788\uB294 \uC9C0\uAE09 \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. (\uC774\uBBF8 \uD68C\uC218\uB418\uC5C8\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.)" });
-  const stmts = [];
-  let reverted = 0;
-  let totalReverted = 0;
-  for (const r of targets) {
-    const amount = Number(r.amount);
-    const revertAmount = -amount;
-    stmts.push(
-      c.env.DB.prepare(
-        `UPDATE users SET auctionPoint = CASE
+     WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`;
+    const selWithout = `SELECT id, userId, amount
+     FROM point_history
+     WHERE type = 'ADMIN_ADJ' AND description = ? AND createdAt >= ? AND createdAt < ?`;
+    let rows;
+    try {
+      rows = (await c.env.DB.prepare(hasReversalCols ? selWith : selWithout).bind(description, start, end).all()).results;
+    } catch (_) {
+      hasReversalCols = false;
+      rows = (await c.env.DB.prepare(selWithout).bind(description, start, end).all()).results;
+    }
+    const targets = rows.filter((r) => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0);
+    if (!targets.length) return c.json({ ok: true, count: 0, message: "\uB418\uB3CC\uB9B4 \uC218 \uC788\uB294 \uC9C0\uAE09 \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. (\uC774\uBBF8 \uD68C\uC218\uB418\uC5C8\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.)" });
+    const stmts = [];
+    let reverted = 0;
+    let totalReverted = 0;
+    for (const r of targets) {
+      const amount = Number(r.amount);
+      const revertAmount = -amount;
+      stmts.push(
+        c.env.DB.prepare(
+          `UPDATE users SET auctionPoint = CASE
            WHEN auctionPoint + ? >= 0 THEN auctionPoint + ?
            ELSE 0 END
          WHERE id = ?`
-      ).bind(revertAmount, revertAmount, r.userId)
-    );
-    stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id));
-    stmts.push(c.env.DB.prepare(
-      `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
-       VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
-    ).bind(genId("ph-"), r.userId, revertAmount, `\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`, r.id));
-    reverted++;
-    totalReverted += Math.abs(amount);
+        ).bind(revertAmount, revertAmount, r.userId)
+      );
+      if (hasReversalCols) {
+        stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id));
+        stmts.push(c.env.DB.prepare(
+          `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
+        ).bind(genId("ph-"), r.userId, revertAmount, `\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`, r.id));
+      } else {
+        stmts.push(c.env.DB.prepare(
+          `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
+        ).bind(genId("ph-"), r.userId, revertAmount, `\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`));
+      }
+      reverted++;
+      totalReverted += Math.abs(amount);
+    }
+    await c.env.DB.batch(stmts);
+    return c.json({ ok: true, count: reverted, totalReverted });
+  } catch (e) {
+    return c.json({ error: "\uD68C\uC218 \uCC98\uB9AC \uC2E4\uD328: " + (e?.message || String(e)) }, 500);
   }
-  await c.env.DB.batch(stmts);
-  return c.json({ ok: true, count: reverted, totalReverted });
 });
 admin.get("/convivia", async (c) => {
   await ensureConviviaColumn(c.env.DB);
