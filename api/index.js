@@ -10028,7 +10028,8 @@ admin.post("/grant-history/revert-batch", async (c) => {
     await c.env.DB.batch(stmts);
     return c.json({ ok: true, count: reverted, totalReverted });
   } catch (e) {
-    return c.json({ error: "\uD68C\uC218 \uCC98\uB9AC \uC2E4\uD328: " + (e?.message || String(e)) }, 500);
+    console.error("revert-batch error:", e?.message || e);
+    return c.json({ error: "\uD68C\uC218 \uCC98\uB9AC \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694." }, 500);
   }
 });
 admin.get("/convivia", async (c) => {
@@ -10230,7 +10231,8 @@ admin.get("/grant-history", async (c) => {
     const history = items.slice(offset, offset + limit);
     return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to });
   } catch (e) {
-    return c.json({ error: "\uC9C0\uAE09 \uB0B4\uC5ED \uC870\uD68C \uC2E4\uD328: " + (e?.message || String(e)) }, 500);
+    console.error("grant-history error:", e?.message || e);
+    return c.json({ error: "\uC9C0\uAE09 \uB0B4\uC5ED\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694." }, 500);
   }
 });
 admin.get("/members/:id", async (c) => {

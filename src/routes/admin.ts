@@ -536,8 +536,8 @@ admin.post('/grant-history/revert-batch', async (c) => {
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, count: reverted, totalReverted })
  } catch (e: any) {
-  // 진단용: 실제 에러 메시지 반환 (임시)
-  return c.json({ error: '회수 처리 실패: ' + (e?.message || String(e)) }, 500)
+  console.error('revert-batch error:', e?.message || e)
+  return c.json({ error: '회수 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' }, 500)
  }
 })
 
@@ -786,8 +786,8 @@ admin.get('/grant-history', async (c) => {
   const history = items.slice(offset, offset + limit)
   return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to })
  } catch (e: any) {
-  // 진단용: 실제 에러 메시지를 반환하여 원인 파악 (임시)
-  return c.json({ error: '지급 내역 조회 실패: ' + (e?.message || String(e)) }, 500)
+  console.error('grant-history error:', e?.message || e)
+  return c.json({ error: '지급 내역을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.' }, 500)
  }
 })
 
