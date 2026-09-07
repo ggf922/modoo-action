@@ -643,6 +643,7 @@ admin.get('/members/vip-plus-count', async (c) => {
 //  · 개별 회원 지급/회수    (그 외 ADMIN_ADJ, 예: '관리자 조정: ...') → 회원명과 함께 건별 표시
 // 대량 데이터 대비: 그룹핑 후 offset/limit 로 페이지네이션하여 반환한다.
 admin.get('/grant-history', async (c) => {
+ try {
   const url = new URL(c.req.url)
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 20, 1), 100)
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
@@ -726,6 +727,10 @@ admin.get('/grant-history', async (c) => {
   // 페이지 분할.
   const history = items.slice(offset, offset + limit)
   return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to })
+ } catch (e: any) {
+  // 진단용: 실제 에러 메시지를 반환하여 원인 파악 (임시)
+  return c.json({ error: '지급 내역 조회 실패: ' + (e?.message || String(e)) }, 500)
+ }
 })
 
 // 단일 회원 상세 (수정 폼용)

@@ -10111,29 +10111,30 @@ admin.get("/members/vip-plus-count", async (c) => {
   return c.json({ count: row?.cnt ?? 0 });
 });
 admin.get("/grant-history", async (c) => {
-  const url = new URL(c.req.url);
-  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
-  const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
-  const all = url.searchParams.get("all") === "1";
-  const fromRaw = (url.searchParams.get("from") || "").trim();
-  const toRaw = (url.searchParams.get("to") || "").trim();
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  const from = dateRe.test(fromRaw) ? fromRaw : "";
-  const to = dateRe.test(toRaw) ? toRaw : "";
-  const conds = [`ph.type = 'ADMIN_ADJ'`];
-  const binds = [];
-  if (from) {
-    conds.push(`ph.createdAt >= ?`);
-    binds.push(`${from} 00:00:00`);
-  }
-  if (to) {
-    conds.push(`ph.createdAt <= ?`);
-    binds.push(`${to} 23:59:59.999`);
-  }
-  const whereSql = conds.join(" AND ");
-  await ensurePointReversalColumns(c.env.DB);
-  const rows = (await c.env.DB.prepare(
-    `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
+  try {
+    const url = new URL(c.req.url);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
+    const all = url.searchParams.get("all") === "1";
+    const fromRaw = (url.searchParams.get("from") || "").trim();
+    const toRaw = (url.searchParams.get("to") || "").trim();
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const from = dateRe.test(fromRaw) ? fromRaw : "";
+    const to = dateRe.test(toRaw) ? toRaw : "";
+    const conds = [`ph.type = 'ADMIN_ADJ'`];
+    const binds = [];
+    if (from) {
+      conds.push(`ph.createdAt >= ?`);
+      binds.push(`${from} 00:00:00`);
+    }
+    if (to) {
+      conds.push(`ph.createdAt <= ?`);
+      binds.push(`${to} 23:59:59.999`);
+    }
+    const whereSql = conds.join(" AND ");
+    await ensurePointReversalColumns(c.env.DB);
+    const rows = (await c.env.DB.prepare(
+      `SELECT ph.id, ph.userId, ph.amount, ph.description, ph.createdAt,
             ph.reversedAt, ph.reversalOf,
             u.name AS "userName", u.nickname AS "userNickname"
      FROM point_history ph
@@ -10141,47 +10142,50 @@ admin.get("/grant-history", async (c) => {
      WHERE ${whereSql}
      ORDER BY ph.createdAt DESC
      LIMIT 20000`
-  ).bind(...binds).all()).results;
-  const batches = /* @__PURE__ */ new Map();
-  const items = [];
-  for (const r of rows) {
-    const amt = Number(r.amount);
-    const desc = String(r.description || "");
-    const isGrant = desc.startsWith("\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09");
-    const isSub = desc.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC");
-    if (isGrant || isSub) {
-      const t = new Date(r.createdAt).getTime();
-      const secIso = isNaN(t) ? String(r.createdAt) : new Date(Math.floor(t / 1e3) * 1e3).toISOString();
-      const key = `${desc}||${secIso}`;
-      const canRevert = !r.reversedAt && !r.reversalOf && amt !== 0;
-      const g = batches.get(key);
-      if (g) {
-        g.count++;
-        g.totalAmount += amt;
-        if (canRevert) g.reversible = true;
+    ).bind(...binds).all()).results;
+    const batches = /* @__PURE__ */ new Map();
+    const items = [];
+    for (const r of rows) {
+      const amt = Number(r.amount);
+      const desc = String(r.description || "");
+      const isGrant = desc.startsWith("\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09");
+      const isSub = desc.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC");
+      if (isGrant || isSub) {
+        const t = new Date(r.createdAt).getTime();
+        const secIso = isNaN(t) ? String(r.createdAt) : new Date(Math.floor(t / 1e3) * 1e3).toISOString();
+        const key = `${desc}||${secIso}`;
+        const canRevert = !r.reversedAt && !r.reversalOf && amt !== 0;
+        const g = batches.get(key);
+        if (g) {
+          g.count++;
+          g.totalAmount += amt;
+          if (canRevert) g.reversible = true;
+        } else {
+          const item = { kind: isSub ? "SUBSCRIPTION" : "GRANT", description: desc, createdAt: secIso, count: 1, totalAmount: amt, reversible: canRevert };
+          batches.set(key, item);
+          items.push(item);
+        }
       } else {
-        const item = { kind: isSub ? "SUBSCRIPTION" : "GRANT", description: desc, createdAt: secIso, count: 1, totalAmount: amt, reversible: canRevert };
-        batches.set(key, item);
-        items.push(item);
+        items.push({
+          kind: "INDIVIDUAL",
+          description: desc,
+          createdAt: r.createdAt,
+          count: 1,
+          totalAmount: amt,
+          userName: r.userName,
+          userNickname: r.userNickname
+        });
       }
-    } else {
-      items.push({
-        kind: "INDIVIDUAL",
-        description: desc,
-        createdAt: r.createdAt,
-        count: 1,
-        totalAmount: amt,
-        userName: r.userName,
-        userNickname: r.userNickname
-      });
     }
+    const total = items.length;
+    if (all) {
+      return c.json({ history: items, total, from, to });
+    }
+    const history = items.slice(offset, offset + limit);
+    return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to });
+  } catch (e) {
+    return c.json({ error: "\uC9C0\uAE09 \uB0B4\uC5ED \uC870\uD68C \uC2E4\uD328: " + (e?.message || String(e)) }, 500);
   }
-  const total = items.length;
-  if (all) {
-    return c.json({ history: items, total, from, to });
-  }
-  const history = items.slice(offset, offset + limit);
-  return c.json({ history, total, limit, offset, hasMore: offset + limit < total, from, to });
 });
 admin.get("/members/:id", async (c) => {
   const uid2 = c.req.param("id");
