@@ -483,38 +483,56 @@ admin.post('/grant-history/revert-batch', async (c) => {
   const targets = rows.filter(r => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0)
   if (!targets.length) return c.json({ ok: true, count: 0, message: '되돌릴 수 있는 지급 내역이 없습니다. (이미 회수되었을 수 있습니다.)' })
 
-  const stmts: D1PreparedStatement[] = []
-  let reverted = 0
-  let totalReverted = 0
-  for (const r of targets) {
-    const amount = Number(r.amount)
-    const revertAmount = -amount // 반대 방향 상쇄
-    // 잔액이 음수가 되지 않는 만큼만 회수 (부족하면 보유분까지만 차감)
+  const reverted = targets.length
+  const totalReverted = targets.reduce((s, r) => s + Math.abs(Number(r.amount)), 0)
+  const targetIds = targets.map(r => String(r.id))
+
+  // ===== 집합(set-based) SQL 로 일괄 처리 =====
+  //  회원 수가 많은 배치(예: 323명 → 969개 개별 쿼리)를 개별 문장으로 돌리면
+  //  Vercel 함수 타임아웃에 걸리므로, 회원별 루프 대신 3개의 집합 쿼리로 처리한다.
+  //  targetIds 를 IN(...) 으로 넘겨 대상 원본을 한 번에 지정한다.
+  const ph = targetIds.map(() => '?').join(',')
+
+  // 1) 잔액 복구: 대상 원본들의 userId 별 amount 합계만큼 차감(음수는 0으로 클램프)
+  const restoreBalance = c.env.DB.prepare(
+    `UPDATE users u SET auctionPoint = GREATEST(u.auctionPoint - agg.total, 0)
+     FROM (
+       SELECT userId AS uid, SUM(amount) AS total
+       FROM point_history
+       WHERE id IN (${ph})
+       GROUP BY userId
+     ) agg
+     WHERE u.id = agg.uid`
+  ).bind(...targetIds)
+
+  const stmts: D1PreparedStatement[] = [restoreBalance]
+
+  if (hasReversalCols) {
+    // 2) 원본 전체를 "되돌림 처리됨"으로 표시 (한 번에)
+    stmts.push(
+      c.env.DB.prepare(`UPDATE point_history SET reversedAt = datetime('now') WHERE id IN (${ph})`).bind(...targetIds)
+    )
+    // 3) 상쇄 기록을 INSERT ... SELECT 로 한 번에 삽입 (reversalOf = 원본 id)
     stmts.push(
       c.env.DB.prepare(
-        `UPDATE users SET auctionPoint = CASE
-           WHEN auctionPoint + ? >= 0 THEN auctionPoint + ?
-           ELSE 0 END
-         WHERE id = ?`
-      ).bind(revertAmount, revertAmount, r.userId)
-    )
-    if (hasReversalCols) {
-      // 원본을 "되돌림 처리됨"으로 표시 + 상쇄 기록 추가 (감사 추적/중복 회수 방지)
-      stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id))
-      stmts.push(c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
-         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
-      ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`, r.id))
-    } else {
-      // 되돌리기 컬럼이 없는 경우: 상쇄 기록만 남긴다(reversalOf 없이). 중복 회수 방지는 못하지만 잔액은 정확히 복구.
-      stmts.push(c.env.DB.prepare(
+         SELECT 'ph-' || substr(md5(random()::text || id), 1, 16), userId, 'ADMIN_ADJ', 'AUCTION',
+                -amount, ?, id, datetime('now')
+         FROM point_history WHERE id IN (${ph})`
+      ).bind(`회수(되돌리기): ${description}`, ...targetIds)
+    )
+  } else {
+    // 되돌리기 컬럼이 없는 경우: 상쇄 기록만 남긴다(reversalOf 없이). 잔액은 정확히 복구.
+    stmts.push(
+      c.env.DB.prepare(
         `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
-      ).bind(genId('ph-'), r.userId, revertAmount, `회수(되돌리기): ${description}`))
-    }
-    reverted++
-    totalReverted += Math.abs(amount)
+         SELECT 'ph-' || substr(md5(random()::text || id), 1, 16), userId, 'ADMIN_ADJ', 'AUCTION',
+                -amount, ?, datetime('now')
+         FROM point_history WHERE id IN (${ph})`
+      ).bind(`회수(되돌리기): ${description}`, ...targetIds)
+    )
   }
+
   await c.env.DB.batch(stmts)
   return c.json({ ok: true, count: reverted, totalReverted })
  } catch (e: any) {

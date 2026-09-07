@@ -9988,34 +9988,42 @@ admin.post("/grant-history/revert-batch", async (c) => {
     }
     const targets = rows.filter((r) => !r.reversedAt && !r.reversalOf && Number(r.amount) !== 0);
     if (!targets.length) return c.json({ ok: true, count: 0, message: "\uB418\uB3CC\uB9B4 \uC218 \uC788\uB294 \uC9C0\uAE09 \uB0B4\uC5ED\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. (\uC774\uBBF8 \uD68C\uC218\uB418\uC5C8\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4.)" });
-    const stmts = [];
-    let reverted = 0;
-    let totalReverted = 0;
-    for (const r of targets) {
-      const amount = Number(r.amount);
-      const revertAmount = -amount;
+    const reverted = targets.length;
+    const totalReverted = targets.reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+    const targetIds = targets.map((r) => String(r.id));
+    const ph = targetIds.map(() => "?").join(",");
+    const restoreBalance = c.env.DB.prepare(
+      `UPDATE users u SET auctionPoint = GREATEST(u.auctionPoint - agg.total, 0)
+     FROM (
+       SELECT userId AS uid, SUM(amount) AS total
+       FROM point_history
+       WHERE id IN (${ph})
+       GROUP BY userId
+     ) agg
+     WHERE u.id = agg.uid`
+    ).bind(...targetIds);
+    const stmts = [restoreBalance];
+    if (hasReversalCols) {
+      stmts.push(
+        c.env.DB.prepare(`UPDATE point_history SET reversedAt = datetime('now') WHERE id IN (${ph})`).bind(...targetIds)
+      );
       stmts.push(
         c.env.DB.prepare(
-          `UPDATE users SET auctionPoint = CASE
-           WHEN auctionPoint + ? >= 0 THEN auctionPoint + ?
-           ELSE 0 END
-         WHERE id = ?`
-        ).bind(revertAmount, revertAmount, r.userId)
-      );
-      if (hasReversalCols) {
-        stmts.push(c.env.DB.prepare("UPDATE point_history SET reversedAt = datetime('now') WHERE id = ?").bind(r.id));
-        stmts.push(c.env.DB.prepare(
           `INSERT INTO point_history (id, userId, type, pointKind, amount, description, reversalOf, createdAt)
-         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, ?, datetime('now'))`
-        ).bind(genId("ph-"), r.userId, revertAmount, `\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`, r.id));
-      } else {
-        stmts.push(c.env.DB.prepare(
+         SELECT 'ph-' || substr(md5(random()::text || id), 1, 16), userId, 'ADMIN_ADJ', 'AUCTION',
+                -amount, ?, id, datetime('now')
+         FROM point_history WHERE id IN (${ph})`
+        ).bind(`\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`, ...targetIds)
+      );
+    } else {
+      stmts.push(
+        c.env.DB.prepare(
           `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
-         VALUES (?, ?, 'ADMIN_ADJ', 'AUCTION', ?, ?, datetime('now'))`
-        ).bind(genId("ph-"), r.userId, revertAmount, `\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`));
-      }
-      reverted++;
-      totalReverted += Math.abs(amount);
+         SELECT 'ph-' || substr(md5(random()::text || id), 1, 16), userId, 'ADMIN_ADJ', 'AUCTION',
+                -amount, ?, datetime('now')
+         FROM point_history WHERE id IN (${ph})`
+        ).bind(`\uD68C\uC218(\uB418\uB3CC\uB9AC\uAE30): ${description}`, ...targetIds)
+      );
     }
     await c.env.DB.batch(stmts);
     return c.json({ ok: true, count: reverted, totalReverted });
