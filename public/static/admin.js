@@ -1297,6 +1297,7 @@ let _grantHistoryTotal = 0
 let _grantHistoryLoading = false
 let _grantHistoryFrom = ''   // YYYY-MM-DD (선택 시작일)
 let _grantHistoryTo = ''     // YYYY-MM-DD (선택 종료일)
+let _grantHistoryItems = []  // 현재 화면에 렌더된 내역 항목(회수 버튼이 인덱스로 참조)
 
 // 현재 선택된 날짜 필터를 쿼리스트링으로 (앞에 &from=..&to=.. 형태)
 function grantHistoryDateQS() {
@@ -1306,8 +1307,8 @@ function grantHistoryDateQS() {
   return qs
 }
 
-// 내역 1건 → HTML 카드
-function renderGrantHistoryItem(h) {
+// 내역 1건 → HTML 카드 (idx: _grantHistoryItems 내 위치, 회수 버튼이 참조)
+function renderGrantHistoryItem(h, idx) {
   const amt = Number(h.totalAmount)
   const amountColor = amt < 0 ? 'text-red-500' : 'text-green-600'
   const sign = amt < 0 ? '' : '+'
@@ -1326,12 +1327,11 @@ function renderGrantHistoryItem(h) {
     const who = h.userName ? `${h.userName}${h.userNickname ? '(@' + h.userNickname + ')' : ''}` : '(삭제된 회원)'
     sub = `대상 ${who}`
   }
-  // 등급 일괄 지급/구독료 배치는 회수(되돌리기) 가능
+  // 등급 일괄 지급/구독료 배치는 회수(되돌리기) 가능 — 인덱스만 전달(안전)
   let revertBtn = ''
   if ((h.kind === 'GRANT' || h.kind === 'SUBSCRIPTION')) {
     if (h.reversible) {
-      const payload = encodeURIComponent(JSON.stringify({ description: h.description || '', createdAt: h.createdAt || '', label: (h.description || ''), count: h.count || 0 }))
-      revertBtn = `<button onclick="revertGrantBatch('${payload}', this)" class="shrink-0 inline-flex items-center gap-1 bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition whitespace-nowrap"><i class="fas fa-rotate-left"></i> 회수</button>`
+      revertBtn = `<button type="button" onclick="revertGrantBatch(${idx}, this)" class="shrink-0 inline-flex items-center gap-1 bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 transition whitespace-nowrap"><i class="fas fa-rotate-left"></i> 회수</button>`
     } else {
       revertBtn = `<span class="shrink-0 inline-flex items-center gap-1 text-xs text-gray-400 font-bold px-2 py-1.5"><i class="fas fa-check"></i> 회수됨</span>`
     }
@@ -1351,10 +1351,11 @@ function renderGrantHistoryItem(h) {
 }
 
 // 등급 일괄 지급 배치 회수(되돌리기) — 잘못 지급한 일괄 내역을 통째로 회수
-async function revertGrantBatch(payloadEnc, btn) {
-  let p
-  try { p = JSON.parse(decodeURIComponent(payloadEnc)) } catch (e) { return }
-  const label = p.label || '해당 일괄 지급'
+//  idx: _grantHistoryItems 내 위치. 항목의 description + createdAt(초 단위) 로 배치 식별
+async function revertGrantBatch(idx, btn) {
+  const p = _grantHistoryItems[idx]
+  if (!p) { toast('내역을 찾을 수 없습니다. 목록을 새로고침합니다.', 'warn'); await reloadGrantHistory(); return }
+  const label = p.description || '해당 일괄 지급'
   if (!confirm(`[${label}]\n대상 ${won(p.count || 0)}명에게 지급했던 포인트를 모두 회수(되돌리기)합니다.\n\n진행하시겠습니까?`)) return
   if (btn) btn.disabled = true
   try {
@@ -1442,13 +1443,14 @@ async function reloadGrantHistory() {
   const history = data.history || []
   _grantHistoryTotal = data.total || history.length
   _grantHistoryOffset = history.length
+  _grantHistoryItems = history.slice()   // 회수 버튼이 인덱스로 참조
 
   const cntEl = document.getElementById('grant-history-count')
   if (cntEl) cntEl.textContent = `(${won(_grantHistoryTotal)})`
 
   if (listEl) {
     listEl.innerHTML = history.length
-      ? history.map(renderGrantHistoryItem).join('')
+      ? history.map((h, i) => renderGrantHistoryItem(h, i)).join('')
       : `<p class="text-center text-gray-400 py-10">${(_grantHistoryFrom || _grantHistoryTo) ? '선택한 기간에 지급 내역이 없습니다.' : '아직 지급 내역이 없습니다.'}</p>`
   }
   updateGrantHistoryMore(data.hasMore)
@@ -1515,8 +1517,10 @@ async function loadMoreGrantHistory() {
     const history = data.history || []
     _grantHistoryTotal = data.total || _grantHistoryTotal
     _grantHistoryOffset += history.length
+    const base = _grantHistoryItems.length          // 이어붙일 인덱스 시작점
+    _grantHistoryItems = _grantHistoryItems.concat(history)
     const listEl = document.getElementById('grant-history-list')
-    if (listEl) listEl.insertAdjacentHTML('beforeend', history.map(renderGrantHistoryItem).join(''))
+    if (listEl) listEl.insertAdjacentHTML('beforeend', history.map((h, i) => renderGrantHistoryItem(h, base + i)).join(''))
     updateGrantHistoryMore(data.hasMore)
   } catch (err) {
     toast(errMsg(err), 'error')
