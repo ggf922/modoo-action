@@ -10150,8 +10150,9 @@ admin.get("/grant-history", async (c) => {
     const isGrant = desc.startsWith("\uB4F1\uAE09 \uC77C\uAD04\uC9C0\uAE09");
     const isSub = desc.startsWith("\uC6D4 \uAD6C\uB3C5\uB8CC");
     if (isGrant || isSub) {
-      const sec = String(r.createdAt).slice(0, 19);
-      const key = `${desc}||${sec}`;
+      const t = new Date(r.createdAt).getTime();
+      const secIso = isNaN(t) ? String(r.createdAt) : new Date(Math.floor(t / 1e3) * 1e3).toISOString();
+      const key = `${desc}||${secIso}`;
       const canRevert = !r.reversedAt && !r.reversalOf && amt !== 0;
       const g = batches.get(key);
       if (g) {
@@ -10159,7 +10160,7 @@ admin.get("/grant-history", async (c) => {
         g.totalAmount += amt;
         if (canRevert) g.reversible = true;
       } else {
-        const item = { kind: isSub ? "SUBSCRIPTION" : "GRANT", description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt, reversible: canRevert };
+        const item = { kind: isSub ? "SUBSCRIPTION" : "GRANT", description: desc, createdAt: secIso, count: 1, totalAmount: amt, reversible: canRevert };
         batches.set(key, item);
         items.push(item);
       }
@@ -10625,15 +10626,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820m"></script>
-  <script src="/static/i18n.js?v=20260820m"></script>
-  <script src="/static/i18n-dict.js?v=20260820m"></script>
-  <script src="/static/components.js?v=20260820m"></script>
-  <script src="/static/pages.js?v=20260820m"></script>
-  <script src="/static/mypage.js?v=20260820m"></script>
-  <script src="/static/network.js?v=20260820m"></script>
-  <script src="/static/admin.js?v=20260820m"></script>
-  <script src="/static/app.js?v=20260820m"></script>
+  <script src="/static/api.js?v=20260820n"></script>
+  <script src="/static/i18n.js?v=20260820n"></script>
+  <script src="/static/i18n-dict.js?v=20260820n"></script>
+  <script src="/static/components.js?v=20260820n"></script>
+  <script src="/static/pages.js?v=20260820n"></script>
+  <script src="/static/mypage.js?v=20260820n"></script>
+  <script src="/static/network.js?v=20260820n"></script>
+  <script src="/static/admin.js?v=20260820n"></script>
+  <script src="/static/app.js?v=20260820n"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

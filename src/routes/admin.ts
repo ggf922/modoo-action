@@ -690,15 +690,21 @@ admin.get('/grant-history', async (c) => {
     const isGrant = desc.startsWith('등급 일괄지급')
     const isSub = desc.startsWith('월 구독료')
     if (isGrant || isSub) {
-      // 같은 배치(설명+초 단위 시각)로 그룹핑
-      const sec = String(r.createdAt).slice(0, 19)
-      const key = `${desc}||${sec}`
+      // 같은 배치(설명+초 단위 시각)로 그룹핑.
+      //  createdAt 은 Date 객체/문자열 등 형식이 다양하므로 Date 로 파싱 후
+      //  "초 단위"로 내림한 시각(밀리초 제거)을 기준으로 그룹핑한다.
+      //  (예전 String(Date).slice(0,19) 는 "Mon Sep 07 2026 01:" 처럼 잘려
+      //   같은 시(hour)의 서로 다른 배치가 하나로 잘못 합쳐지는 버그가 있었음)
+      const t = new Date(r.createdAt).getTime()
+      const secIso = isNaN(t) ? String(r.createdAt) : new Date(Math.floor(t / 1000) * 1000).toISOString()
+      const key = `${desc}||${secIso}`
       // 아직 되돌리지 않은 원본(reversedAt 없음, 상쇄기록 아님)이면 되돌리기 가능
       const canRevert = !r.reversedAt && !r.reversalOf && amt !== 0
       const g = batches.get(key)
       if (g) { g.count++; g.totalAmount += amt; if (canRevert) g.reversible = true }
       else {
-        const item: Item = { kind: isSub ? 'SUBSCRIPTION' : 'GRANT', description: desc, createdAt: r.createdAt, count: 1, totalAmount: amt, reversible: canRevert }
+        // 배치 대표 시각을 초 단위로 정규화하여 저장 → 회수 라우트가 이 값으로 정확히 같은 초를 조회
+        const item: Item = { kind: isSub ? 'SUBSCRIPTION' : 'GRANT', description: desc, createdAt: secIso, count: 1, totalAmount: amt, reversible: canRevert }
         batches.set(key, item)
         items.push(item)   // 배치의 첫 등장 위치(최근순)에 삽입 → 순서 유지
       }
