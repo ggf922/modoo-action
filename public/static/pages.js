@@ -38,6 +38,14 @@ async function pageHome() {
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🎁 미낙찰자</div><div class="text-white/80">보상 포인트 지급</div></div>
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">👥 추천하면</div><div class="text-white/80">포인트 적립</div></div>
       </div>
+      <div id="hero-guide-links" class="flex flex-wrap gap-2.5 mt-4">
+        <a href="#/guide/register" class="inline-flex items-center gap-2 bg-white text-brand-orange font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-orange-50 transition">
+          <i class="fas fa-circle-question"></i> 회원가입 방법
+        </a>
+        <a href="#/guide/auction" class="inline-flex items-center gap-2 bg-white/20 backdrop-blur border border-white/40 text-white font-bold px-4 py-2.5 rounded-xl text-sm hover:bg-white/30 transition">
+          <i class="fas fa-gavel"></i> 경매 참여하는 방법
+        </a>
+      </div>
     </div>
     <div class="absolute -right-8 -bottom-8 text-[160px] opacity-20 select-none">🎁</div>
   </section>`
@@ -385,4 +393,85 @@ async function pageProduct(params) {
       <div class="flex flex-wrap gap-2">${participantBadges}</div>
     </div>
   </section>`)
+}
+
+// ===== 이용 안내(메뉴얼) — 휴대폰 기준 =====
+
+// 공통: 단계 카드 렌더러
+function guideStep(no, title, desc, icon) {
+  return `
+  <div class="flex gap-3 items-start bg-white rounded-2xl border border-gray-100 p-4">
+    <div class="shrink-0 w-9 h-9 rounded-full bg-brand-orange text-white font-extrabold flex items-center justify-center">${no}</div>
+    <div class="min-w-0">
+      <div class="font-bold text-gray-800 mb-0.5"><i class="fas ${icon} text-brand-orange mr-1"></i> ${title}</div>
+      <div class="text-sm text-gray-500 leading-relaxed">${desc}</div>
+    </div>
+  </div>`
+}
+
+// 1) 회원가입 방법 (모바일 기준)
+async function pageGuideRegister() {
+  document.getElementById('app').innerHTML = layout(`
+  <div class="max-w-md mx-auto mt-4">
+    <a href="#/" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 메인으로</a>
+    <div class="bg-gradient-to-br from-brand-orange to-red-500 text-white rounded-3xl p-6 mt-3 mb-5">
+      <div class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-medium mb-2"><i class="fas fa-mobile-screen-button"></i> 휴대폰 기준 안내</div>
+      <h1 class="text-2xl font-extrabold leading-snug">회원가입 방법</h1>
+      <p class="text-white/90 text-sm mt-1">1분이면 가입 완료! 아래 순서대로 따라 해보세요.</p>
+    </div>
+
+    <div class="space-y-3">
+      ${guideStep(1, '앱/사이트 접속', '휴대폰 브라우저에서 <b>modoo.auction</b> 에 접속해요. 화면 <b>오른쪽 위</b>의 주황색 <b>[회원가입]</b> 버튼을 눌러요.', 'fa-arrow-pointer')}
+      ${guideStep(2, '기본 정보 입력', '<b>이메일(또는 아이디)</b>, <b>비밀번호(6자 이상)</b>, <b>이름</b>, <b>닉네임</b>, <b>휴대폰 번호</b>를 입력해요.', 'fa-user-pen')}
+      ${guideStep(3, '추천 코드 입력 (선택)', '추천해 준 분이 있다면 <b>추천 코드</b>를 입력해요. 없으면 비워 두어도 가입돼요. <span class="text-gray-400">(미입력 시 회사가 추천인으로 자동 설정)</span>', 'fa-gift')}
+      ${guideStep(4, '가입 완료 & 로그인', '<b>[가입하기]</b>를 누르면 완료! 바로 로그인되어 나만의 <b>추천 코드</b>가 발급돼요.', 'fa-circle-check')}
+      ${guideStep(5, '포인트 충전 준비', '경매에 참여하려면 <b>경매 포인트</b>가 필요해요. 로그인 후 <b>마이페이지 → 충전</b>에서 준비할 수 있어요.', 'fa-wallet')}
+    </div>
+
+    <div class="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-5 text-sm text-gray-600 leading-relaxed">
+      <div class="font-bold text-brand-orange mb-1"><i class="fas fa-lightbulb"></i> 알아두면 좋아요</div>
+      가입만 해도 나만의 추천 코드가 생겨요. 지인에게 추천 코드를 공유하고 가입을 유도하면 <b>추천 포인트</b>를 받을 수 있어요.
+    </div>
+
+    <a href="#/auth/register" class="block text-center w-full bg-brand-orange text-white font-bold py-3.5 rounded-xl hover:bg-orange-600 transition mt-5">
+      <i class="fas fa-user-plus"></i> 지금 회원가입하기
+    </a>
+    <a href="#/guide/auction" class="block text-center w-full bg-white border border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition mt-2">
+      다음: 경매 참여하는 방법 <i class="fas fa-chevron-right"></i>
+    </a>
+  </div>`)
+}
+
+// 2) 경매 참여하는 방법 (모바일 기준)
+async function pageGuideAuction() {
+  document.getElementById('app').innerHTML = layout(`
+  <div class="max-w-md mx-auto mt-4">
+    <a href="#/" class="text-sm text-gray-400 hover:text-brand-orange"><i class="fas fa-chevron-left"></i> 메인으로</a>
+    <div class="bg-gradient-to-br from-brand-orange to-red-500 text-white rounded-3xl p-6 mt-3 mb-5">
+      <div class="inline-block bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-medium mb-2"><i class="fas fa-mobile-screen-button"></i> 휴대폰 기준 안내</div>
+      <h1 class="text-2xl font-extrabold leading-snug">경매 참여하는 방법</h1>
+      <p class="text-white/90 text-sm mt-1">낙찰되면 도매가 자동구매, 미낙찰돼도 보상 포인트!</p>
+    </div>
+
+    <div class="space-y-3">
+      ${guideStep(1, '로그인 & 포인트 확인', '로그인 후 <b>경매 포인트</b>가 있는지 확인해요. 부족하면 <b>마이페이지 → 충전</b>에서 충전해요.', 'fa-right-to-bracket')}
+      ${guideStep(2, '진행 중인 경매 선택', '메인 화면의 <b>[진행 중인 경매]</b>에서 원하는 상품 카드를 눌러요.', 'fa-fire')}
+      ${guideStep(3, '상품 정보 확인', '<b>시중가·시작가·참가비·정원·당첨자 수·미당첨 보상</b>을 확인해요. 참여 현황(게이지)으로 남은 자리도 볼 수 있어요.', 'fa-circle-info')}
+      ${guideStep(4, '경매 참여하기', '<b>[경매 참여하기]</b> 버튼을 눌러요. 참가비만큼 <b>경매 포인트가 차감</b>되고 참여가 확정돼요.', 'fa-gavel')}
+      ${guideStep(5, '정원 도달 → 자동 추첨', '정원이 다 차면 <b>자동으로 추첨</b>돼요. <b>낙찰자</b>는 도매가로 자동 구매, <b>미낙찰자</b>는 <b>보상 포인트</b>를 돌려받아요.', 'fa-dice')}
+      ${guideStep(6, '결과 확인', '결과는 <b>마이페이지 → 참여 내역 / 포인트 내역</b>에서 확인해요. 미낙찰 보상 포인트로 <b>다시 참여</b>할 수 있어요.', 'fa-clipboard-check')}
+    </div>
+
+    <div class="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-5 text-sm text-gray-600 leading-relaxed">
+      <div class="font-bold text-brand-orange mb-1"><i class="fas fa-lightbulb"></i> 핵심 포인트</div>
+      낙찰되든 안 되든 <b>모두가 이익</b>! 낙찰되면 저렴하게 사고, 미낙찰돼도 보상 포인트로 돌려받아 다시 도전할 수 있어요.
+    </div>
+
+    <a href="#/" class="block text-center w-full bg-brand-orange text-white font-bold py-3.5 rounded-xl hover:bg-orange-600 transition mt-5">
+      <i class="fas fa-fire"></i> 진행 중인 경매 보러가기
+    </a>
+    <a href="#/guide/register" class="block text-center w-full bg-white border border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition mt-2">
+      <i class="fas fa-chevron-left"></i> 이전: 회원가입 방법
+    </a>
+  </div>`)
 }

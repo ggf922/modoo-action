@@ -3,6 +3,8 @@ Router.add('/', pageHome)
 Router.add('/auth/login', pageLogin)
 Router.add('/auth/register', pageRegister)
 Router.add('/auth/forgot', pageForgot)
+Router.add('/guide/register', pageGuideRegister)
+Router.add('/guide/auction', pageGuideAuction)
 Router.add('/products/:id', pageProduct)
 
 Router.add('/mypage', pageMypage)
