@@ -12,13 +12,13 @@ async function pageHome() {
   const hero = `
   <section id="hero" class="relative rounded-3xl overflow-hidden mb-8 bg-gradient-to-br from-brand-orange to-red-500 text-white p-8 sm:p-12">
     <div id="hero-external-links" class="relative z-20 grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-5 sm:mb-0 sm:absolute sm:top-6 sm:right-6 sm:w-[420px]">
-      <a href="https://modoomodoo.fun/" target="_blank" rel="noopener noreferrer"
-         class="w-full inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:from-purple-600 hover:to-pink-600 transition whitespace-nowrap">
-        <i class="fas fa-wand-magic-sparkles"></i> 낭만 Ai시리즈
-      </a>
       <a href="https://modoomodoo.com/" target="_blank" rel="noopener noreferrer"
          class="w-full inline-flex items-center justify-center gap-1.5 bg-white text-brand-orange font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-orange-50 transition whitespace-nowrap">
         <i class="fas fa-store"></i> 모두모두 쇼핑몰
+      </a>
+      <a href="https://modoomodoo.fun/" target="_blank" rel="noopener noreferrer"
+         class="w-full inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:from-purple-600 hover:to-pink-600 transition whitespace-nowrap">
+        <i class="fas fa-wand-magic-sparkles"></i> 낭만 Ai시리즈
       </a>
       <a href="https://www.all-live.shop" target="_blank" rel="noopener noreferrer"
          class="w-full inline-flex items-center justify-center gap-1.5 bg-brand-dark text-white font-bold px-4 py-2.5 rounded-xl text-sm shadow-md hover:bg-black transition whitespace-nowrap">
@@ -34,7 +34,7 @@ async function pageHome() {
       <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight mb-3">모두가 이익을 보는<br/>공동 구매 경매 쇼핑몰, 모두옥션 🎁</h1>
       <p class="text-white/90 mb-6 text-sm sm:text-base">낙찰되면 도매가로 자동 구매!<br/>아쉽게 미낙찰돼도 보상 포인트를 드려요.</p>
       <div class="flex flex-wrap gap-3 text-sm">
-        <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🏆 낙찰자</div><div class="text-white/80">초저가 자동구매</div></div>
+        <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🏆 낙찰자</div><div class="text-white/80">도매가 자동구매</div></div>
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">🎁 미낙찰자</div><div class="text-white/80">보상 포인트 지급</div></div>
         <div class="bg-white/15 backdrop-blur rounded-xl px-4 py-3"><div class="font-bold text-lg">👥 추천하면</div><div class="text-white/80">포인트 적립</div></div>
       </div>
