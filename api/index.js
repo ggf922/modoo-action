@@ -9171,6 +9171,51 @@ products.post("/:id/buy-now", requireAuth, async (c) => {
     title: product.title
   });
 });
+var _partnerReady = false;
+async function ensurePartnerTable(DB) {
+  if (_partnerReady) return;
+  await DB.prepare(`
+    CREATE TABLE IF NOT EXISTS partner_applications (
+      id TEXT PRIMARY KEY,
+      company TEXT NOT NULL,
+      contactName TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT,
+      productName TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'NEW',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+  _partnerReady = true;
+}
+products.post("/partner-apply", async (c) => {
+  await ensurePartnerTable(c.env.DB);
+  const b2 = await c.req.json().catch(() => null);
+  const company = (b2?.company ?? "").toString().trim();
+  const contactName = (b2?.contactName ?? "").toString().trim();
+  const phone = (b2?.phone ?? "").toString().trim();
+  const email = (b2?.email ?? "").toString().trim();
+  const productName = (b2?.productName ?? "").toString().trim();
+  const message2 = (b2?.message ?? "").toString().trim();
+  if (!company) return c.json({ error: "\uC5C5\uCCB4\uBA85(\uBE0C\uB79C\uB4DC\uBA85)\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  if (!contactName) return c.json({ error: "\uB2F4\uB2F9\uC790 \uC774\uB984\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  if (!phone) return c.json({ error: "\uC5F0\uB77D\uCC98\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const cut = (s, n) => s.slice(0, n);
+  await c.env.DB.prepare(
+    `INSERT INTO partner_applications (id, company, contactName, phone, email, productName, message, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'NEW', datetime('now'))`
+  ).bind(
+    genId("pa-"),
+    cut(company, 100),
+    cut(contactName, 50),
+    cut(phone, 40),
+    cut(email, 120),
+    cut(productName, 200),
+    cut(message2, 2e3)
+  ).run();
+  return c.json({ ok: true });
+});
 var products_default = products;
 
 // src/lib/referral.ts
@@ -10032,6 +10077,33 @@ admin.post("/grant-history/revert-batch", async (c) => {
     return c.json({ error: "\uD68C\uC218 \uCC98\uB9AC \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694." }, 500);
   }
 });
+admin.get("/partner-applications", async (c) => {
+  await ensurePartnerTable(c.env.DB);
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, company, contactName, phone, email, productName, message, status, createdAt
+     FROM partner_applications ORDER BY createdAt DESC`
+  ).all()).results;
+  return c.json({ applications: rows });
+});
+admin.post("/partner-applications/:id/status", async (c) => {
+  await ensurePartnerTable(c.env.DB);
+  const id = c.req.param("id");
+  const b2 = await c.req.json().catch(() => null);
+  const status = (b2?.status ?? "").toString().trim();
+  if (!["NEW", "DONE"].includes(status)) return c.json({ error: "\uC62C\uBC14\uB974\uC9C0 \uC54A\uC740 \uC0C1\uD0DC\uC785\uB2C8\uB2E4." }, 400);
+  const res = await c.env.DB.prepare("UPDATE partner_applications SET status = ? WHERE id = ?").bind(status, id).run();
+  const changes = res.meta?.changes ?? res.changes ?? 0;
+  if (!changes) return c.json({ error: "\uC2E0\uCCAD \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  return c.json({ ok: true, status });
+});
+admin.post("/partner-applications/:id/delete", async (c) => {
+  await ensurePartnerTable(c.env.DB);
+  const id = c.req.param("id");
+  const res = await c.env.DB.prepare("DELETE FROM partner_applications WHERE id = ?").bind(id).run();
+  const changes = res.meta?.changes ?? res.changes ?? 0;
+  if (!changes) return c.json({ error: "\uC2E0\uCCAD \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  return c.json({ ok: true });
+});
 admin.get("/convivia", async (c) => {
   await ensureConviviaColumn(c.env.DB);
   const rows = (await c.env.DB.prepare(
@@ -10678,15 +10750,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820q"></script>
-  <script src="/static/i18n.js?v=20260820q"></script>
-  <script src="/static/i18n-dict.js?v=20260820q"></script>
-  <script src="/static/components.js?v=20260820q"></script>
-  <script src="/static/pages.js?v=20260820q"></script>
-  <script src="/static/mypage.js?v=20260820q"></script>
-  <script src="/static/network.js?v=20260820q"></script>
-  <script src="/static/admin.js?v=20260820q"></script>
-  <script src="/static/app.js?v=20260820q"></script>
+  <script src="/static/api.js?v=20260820r"></script>
+  <script src="/static/i18n.js?v=20260820r"></script>
+  <script src="/static/i18n-dict.js?v=20260820r"></script>
+  <script src="/static/components.js?v=20260820r"></script>
+  <script src="/static/pages.js?v=20260820r"></script>
+  <script src="/static/mypage.js?v=20260820r"></script>
+  <script src="/static/network.js?v=20260820r"></script>
+  <script src="/static/admin.js?v=20260820r"></script>
+  <script src="/static/app.js?v=20260820r"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

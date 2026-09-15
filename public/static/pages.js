@@ -108,7 +108,56 @@ async function pageHome() {
     </a>
   </section>`
 
-  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner + healthBanner)
+  // 제품 입점 신청란 (푸터 바로 위) — 누구나 신청 가능, 관리자 모드에서 확인
+  const partnerForm = `
+  <section id="partner-apply" class="mt-10">
+    <div class="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 sm:p-8">
+      <div class="text-center mb-5">
+        <div class="inline-flex items-center gap-1.5 bg-orange-50 text-brand-orange px-3 py-1 rounded-full text-xs font-bold mb-2"><i class="fas fa-handshake-angle"></i> 제품 입점 문의</div>
+        <h2 class="text-xl sm:text-2xl font-extrabold text-gray-800">모두옥션에 제품을 입점하세요</h2>
+        <p class="text-gray-400 text-sm mt-1">아래 내용을 남겨주시면 담당자가 검토 후 연락드립니다.</p>
+      </div>
+      <form id="partner-apply-form" class="space-y-3 max-w-xl mx-auto">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="block text-sm font-medium mb-1">업체명(브랜드명) <span class="text-brand-orange">*</span></label>
+            <input name="company" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="예: 모두상사" /></div>
+          <div><label class="block text-sm font-medium mb-1">담당자 이름 <span class="text-brand-orange">*</span></label>
+            <input name="contactName" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="예: 홍길동" /></div>
+          <div><label class="block text-sm font-medium mb-1">연락처 <span class="text-brand-orange">*</span></label>
+            <input name="phone" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="010-0000-0000" /></div>
+          <div><label class="block text-sm font-medium mb-1">이메일</label>
+            <input name="email" type="email" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="contact@company.com" /></div>
+        </div>
+        <div><label class="block text-sm font-medium mb-1">입점 희망 제품</label>
+          <input name="productName" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none" placeholder="예: 무선 이어폰, 화장품 세트 등" /></div>
+        <div><label class="block text-sm font-medium mb-1">문의 내용</label>
+          <textarea name="message" rows="4" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-orange focus:ring-2 focus:ring-orange-100 outline-none resize-none" placeholder="제품 소개, 공급 조건, 수량 등 자유롭게 작성해주세요."></textarea></div>
+        <button type="submit" class="w-full bg-brand-orange text-white font-bold py-3.5 rounded-xl hover:bg-orange-600 transition"><i class="fas fa-paper-plane"></i> 입점 신청하기</button>
+        <p class="text-xs text-gray-400 text-center">제출하신 정보는 입점 검토 목적에만 사용됩니다.</p>
+      </form>
+    </div>
+  </section>`
+
+  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner + healthBanner + partnerForm)
+
+  // 입점 신청 제출 핸들러
+  const paForm = document.getElementById('partner-apply-form')
+  if (paForm) paForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const payload = {
+      company: fd.get('company'), contactName: fd.get('contactName'), phone: fd.get('phone'),
+      email: fd.get('email'), productName: fd.get('productName'), message: fd.get('message'),
+    }
+    const btn = e.target.querySelector('button[type=submit]')
+    if (btn) btn.disabled = true
+    try {
+      await api.post('/products/partner-apply', payload)
+      toast('입점 신청이 접수되었어요! 담당자가 검토 후 연락드립니다. 🤝', 'success')
+      e.target.reset()
+    } catch (err) { toast(errMsg(err), 'error') }
+    finally { if (btn) btn.disabled = false }
+  })
 }
 
 // 로그인

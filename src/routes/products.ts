@@ -277,4 +277,55 @@ products.post('/:id/buy-now', requireAuth, async (c) => {
   })
 })
 
+// ===== 제품 입점 신청 =====
+// 메인 화면 하단에서 누구나(비로그인 포함) 제품 입점을 신청할 수 있다.
+// 신청 내역은 partner_applications 테이블에 저장되고 관리자 모드에서 조회한다.
+let _partnerReady = false
+export async function ensurePartnerTable(DB: any) {
+  if (_partnerReady) return
+  await DB.prepare(`
+    CREATE TABLE IF NOT EXISTS partner_applications (
+      id TEXT PRIMARY KEY,
+      company TEXT NOT NULL,
+      contactName TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT,
+      productName TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'NEW',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run()
+  _partnerReady = true
+}
+
+// 입점 신청 제출 (공개)
+products.post('/partner-apply', async (c) => {
+  await ensurePartnerTable(c.env.DB)
+  const b = await c.req.json().catch(() => null)
+  const company = (b?.company ?? '').toString().trim()
+  const contactName = (b?.contactName ?? '').toString().trim()
+  const phone = (b?.phone ?? '').toString().trim()
+  const email = (b?.email ?? '').toString().trim()
+  const productName = (b?.productName ?? '').toString().trim()
+  const message = (b?.message ?? '').toString().trim()
+
+  if (!company) return c.json({ error: '업체명(브랜드명)을 입력해주세요.' }, 400)
+  if (!contactName) return c.json({ error: '담당자 이름을 입력해주세요.' }, 400)
+  if (!phone) return c.json({ error: '연락처를 입력해주세요.' }, 400)
+
+  // 과도한 길이 방지(간단 제한)
+  const cut = (s: string, n: number) => s.slice(0, n)
+  await c.env.DB.prepare(
+    `INSERT INTO partner_applications (id, company, contactName, phone, email, productName, message, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'NEW', datetime('now'))`
+  ).bind(
+    genId('pa-'),
+    cut(company, 100), cut(contactName, 50), cut(phone, 40),
+    cut(email, 120), cut(productName, 200), cut(message, 2000)
+  ).run()
+
+  return c.json({ ok: true })
+})
+
 export default products

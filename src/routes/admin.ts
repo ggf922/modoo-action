@@ -7,7 +7,7 @@ import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth, ensureWithdrawalAccountColumns } from './me'
-import { ensureProductUrlColumn, ensureBuyNowPriceColumn } from './products'
+import { ensureProductUrlColumn, ensureBuyNowPriceColumn, ensurePartnerTable } from './products'
 import { ensureMemberFlags, maybePayReferralReward, maybePromoteToVVIP, recalcVVIP } from '../lib/referral'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -539,6 +539,40 @@ admin.post('/grant-history/revert-batch', async (c) => {
   console.error('revert-batch error:', e?.message || e)
   return c.json({ error: '회수 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' }, 500)
  }
+})
+
+// ===== 제품 입점 신청 관리 =====
+// 메인 화면 하단에서 접수된 입점 신청 목록 조회
+admin.get('/partner-applications', async (c) => {
+  await ensurePartnerTable(c.env.DB)
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, company, contactName, phone, email, productName, message, status, createdAt
+     FROM partner_applications ORDER BY createdAt DESC`
+  ).all()).results
+  return c.json({ applications: rows })
+})
+
+// 입점 신청 상태 변경 (NEW / DONE)
+admin.post('/partner-applications/:id/status', async (c) => {
+  await ensurePartnerTable(c.env.DB)
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const status = (b?.status ?? '').toString().trim()
+  if (!['NEW', 'DONE'].includes(status)) return c.json({ error: '올바르지 않은 상태입니다.' }, 400)
+  const res = await c.env.DB.prepare('UPDATE partner_applications SET status = ? WHERE id = ?').bind(status, id).run()
+  const changes = res.meta?.changes ?? res.changes ?? 0
+  if (!changes) return c.json({ error: '신청 내역을 찾을 수 없습니다.' }, 404)
+  return c.json({ ok: true, status })
+})
+
+// 입점 신청 삭제
+admin.post('/partner-applications/:id/delete', async (c) => {
+  await ensurePartnerTable(c.env.DB)
+  const id = c.req.param('id')
+  const res = await c.env.DB.prepare('DELETE FROM partner_applications WHERE id = ?').bind(id).run()
+  const changes = res.meta?.changes ?? res.changes ?? 0
+  if (!changes) return c.json({ error: '신청 내역을 찾을 수 없습니다.' }, 404)
+  return c.json({ ok: true })
 })
 
 // ===== CONVIVIA 회원 관리 =====

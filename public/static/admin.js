@@ -48,6 +48,7 @@ function adminLayout(active, content) {
     ['/admin/subscriptions', 'fa-crown', '구독관리'],
     ['/admin/shipments', 'fa-truck-fast', '배송관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
+    ['/admin/partners', 'fa-handshake-angle', '입점신청'],
     ['/admin/config', 'fa-gear', '설정'],
   ]
   const nav = tabs.map(([href, icon, label]) =>
@@ -2435,4 +2436,76 @@ function showAdminNodeDetail(n) {
       <div class="flex justify-between py-2 border-b border-gray-50"><span class="text-gray-400">경매P</span><span class="font-medium text-brand-orange">${won(n.auctionPoint)}</span></div>
     </div>
     ${isAdmin ? '' : `<button onclick="openMemberEdit('${n.id}')" class="w-full mt-4 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium"><i class="fas fa-pen"></i> 이 회원 수정</button>`}`
+}
+
+// ===== 제품 입점 신청 관리 =====
+async function pageAdminPartners() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  let apps = []
+  try {
+    apps = (await api.get('/admin/partner-applications')).data.applications || []
+  } catch (err) {
+    document.getElementById('app').innerHTML = adminLayout('/admin/partners',
+      `<p class="text-center text-red-500 py-10">${errMsg(err)}</p>`)
+    return
+  }
+
+  const newCount = apps.filter(a => a.status !== 'DONE').length
+  const rows = apps.length ? apps.map(a => {
+    const done = a.status === 'DONE'
+    const badge = done
+      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-bold">처리완료</span>'
+      : '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">신규</span>'
+    return `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-extrabold text-gray-800">${a.company || '-'}</span>${badge}
+          </div>
+          <div class="text-xs text-gray-400 mt-0.5">${fmtDateTime(a.createdAt)}</div>
+        </div>
+        <div class="flex gap-1.5 shrink-0">
+          ${done
+            ? `<button onclick="setPartnerStatus('${a.id}','NEW',this)" class="bg-white border border-orange-300 text-orange-600 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-orange-50 whitespace-nowrap"><i class="fas fa-rotate-left"></i> 신규로</button>`
+            : `<button onclick="setPartnerStatus('${a.id}','DONE',this)" class="bg-white border border-green-400 text-green-600 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-green-50 whitespace-nowrap"><i class="fas fa-check"></i> 처리완료</button>`}
+          <button onclick="deletePartner('${a.id}',this)" class="bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 whitespace-nowrap"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div><span class="text-gray-400">담당자</span> <span class="font-medium text-gray-700">${a.contactName || '-'}</span></div>
+        <div><span class="text-gray-400">연락처</span> <a href="tel:${a.phone || ''}" class="font-medium text-brand-orange">${a.phone || '-'}</a></div>
+        <div><span class="text-gray-400">이메일</span> <span class="font-medium text-gray-700">${a.email || '-'}</span></div>
+        <div><span class="text-gray-400">희망 제품</span> <span class="font-medium text-gray-700">${a.productName || '-'}</span></div>
+      </div>
+      ${a.message ? `<div class="mt-2 text-sm text-gray-600 bg-gray-50 rounded-xl p-3 whitespace-pre-wrap leading-relaxed">${(a.message || '').replace(/</g,'&lt;')}</div>` : ''}
+    </div>`
+  }).join('') : '<div class="text-center text-gray-300 py-16">접수된 입점 신청이 없습니다.</div>'
+
+  document.getElementById('app').innerHTML = adminLayout('/admin/partners', `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="text-lg font-extrabold text-gray-800"><i class="fas fa-handshake-angle text-brand-orange"></i> 제품 입점 신청</h2>
+      <span class="text-sm text-gray-400">전체 <b class="text-gray-600">${apps.length}</b>건 · 신규 <b class="text-brand-orange">${newCount}</b>건</span>
+    </div>
+    <div class="space-y-3">${rows}</div>`)
+}
+
+async function setPartnerStatus(id, status, btn) {
+  if (btn) btn.disabled = true
+  try {
+    await api.post('/admin/partner-applications/' + id + '/status', { status })
+    toast(status === 'DONE' ? '처리완료로 변경했어요.' : '신규로 되돌렸어요.', 'success')
+    pageAdminPartners()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+}
+
+async function deletePartner(id, btn) {
+  if (!confirm('이 입점 신청을 삭제하시겠습니까?')) return
+  if (btn) btn.disabled = true
+  try {
+    await api.post('/admin/partner-applications/' + id + '/delete', {})
+    toast('삭제했어요.', 'success')
+    pageAdminPartners()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
 }
