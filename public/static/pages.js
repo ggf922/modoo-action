@@ -50,6 +50,30 @@ async function pageHome() {
     <div class="absolute -right-8 -bottom-8 text-[160px] opacity-20 select-none">🎁</div>
   </section>`
 
+  // 공지사항 — 추석 연휴 배송 안내
+  const notice = `
+  <section id="notice-chuseok" class="mb-8">
+    <div class="flex items-center gap-2 mb-3">
+      <h2 class="text-xl font-bold"><i class="fas fa-bullhorn text-brand-orange"></i> 공지사항</h2>
+    </div>
+    <div class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="flex items-center gap-2 px-5 pt-4">
+        <span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">배송</span>
+        <span class="font-extrabold text-gray-800">추석 연휴 배송 안내</span>
+      </div>
+      <p class="px-5 pt-1 pb-3 text-sm text-gray-500">추석 연휴로 배송이 일시 중단되오니 이용에 참고 부탁드립니다.</p>
+      <img src="/static/notice-chuseok-2026.png" alt="추석 연휴 배송 안내: 9월 18일 오전 9시 주문마감, 9월 24~26일 추석연휴 배송중단, 9월 28일 배송재개" class="w-full h-auto block" />
+      <div class="px-5 py-4 text-sm text-gray-600 leading-relaxed border-t border-gray-50">
+        <div class="flex flex-wrap gap-x-6 gap-y-1">
+          <div><i class="fas fa-clock text-brand-orange mr-1"></i> <b>9/18(금) 오전 9시</b> 주문 마감</div>
+          <div><i class="fas fa-ban text-red-500 mr-1"></i> <b>9/24(수)~9/26(금)</b> 추석 연휴 (배송 중단)</div>
+          <div><i class="fas fa-truck-fast text-green-600 mr-1"></i> <b>9/28(일)</b> 배송 재개</div>
+        </div>
+        <div class="text-right text-gray-400 mt-2">(주) 모두옥션</div>
+      </div>
+    </div>
+  </section>`
+
   const openGrid = open.length ? `
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-xl font-bold"><i class="fas fa-fire text-brand-orange"></i> 진행 중인 경매</h2>
@@ -138,7 +162,7 @@ async function pageHome() {
     </div>
   </section>`
 
-  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner + healthBanner + partnerForm)
+  appEl.innerHTML = layout(hero + notice + openGrid + drawnGrid + videoBanner + healthBanner + partnerForm)
 
   // 입점 신청 제출 핸들러
   const paForm = document.getElementById('partner-apply-form')
