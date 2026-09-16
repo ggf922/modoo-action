@@ -62,7 +62,7 @@ async function pageHome() {
         <span class="font-extrabold text-gray-800">추석 연휴 배송 안내</span>
       </div>
       <p class="px-5 pt-1 pb-3 text-sm text-gray-500">추석 연휴로 배송이 일시 중단되오니 이용에 참고 부탁드립니다.</p>
-      <img src="/static/notice-chuseok-2026.png" alt="추석 연휴 배송 안내: 9월 18일 오전 9시 주문마감, 9월 24~26일 추석연휴 배송중단, 9월 28일 배송재개" class="w-full h-auto block" />
+      <img src="/static/notice-chuseok-2026.png?v=2" alt="추석 연휴 배송 안내: 9월 18일 오전 9시 주문마감, 9월 24~26일 추석연휴 배송중단, 9월 28일 배송재개" class="w-full h-auto block" />
       <div class="px-5 py-4 text-sm text-gray-600 leading-relaxed border-t border-gray-50">
         <div class="flex flex-wrap gap-x-6 gap-y-1">
           <div><i class="fas fa-clock text-brand-orange mr-1"></i> <b>9/18(금) 오전 9시</b> 주문 마감</div>
@@ -537,7 +537,7 @@ async function pageGuideAuction() {
 
     <div class="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-5 text-sm text-gray-600 leading-relaxed">
       <div class="font-bold text-brand-orange mb-1"><i class="fas fa-lightbulb"></i> 핵심 포인트</div>
-      낙찰되든 안 되든 <b>모두가 이익</b>! 낙찰되면 저렴하게 사고, 미낙찰돼도 보상 포인트로 돌려받아 다시 도전할 수 있어요.
+      낙찰되든 안 되든 <b>모두가 이익</b>! 낙찰되면 도매가로 구매, 미낙찰돼도 보상 포인트로 돌려받아 다시 도전할 수 있어요.
     </div>
 
     <a href="#/" class="block text-center w-full bg-brand-orange text-white font-bold py-3.5 rounded-xl hover:bg-orange-600 transition mt-5">
