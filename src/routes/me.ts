@@ -4,6 +4,7 @@ import { requireAuth } from '../lib/middleware'
 import { genId } from '../lib/auth'
 import { ensureBidRound } from '../lib/draw'
 import { maybePayReferralReward, ensureMemberFlags } from '../lib/referral'
+import { invalidate } from '../lib/cache'
 
 const me = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 me.use('*', requireAuth)
@@ -87,6 +88,68 @@ me.get('/bids', async (c) => {
     String(b.createdAt).localeCompare(String(a.createdAt))
   )
   return c.json({ bids: merged })
+})
+
+// 경매 참여 취소 (환불)
+//   회원이 참여한 경매(bid)를 마감(추첨) 전에 한해 취소하고 경매포인트를 되돌려준다.
+//   - 취소 가능 조건: 본인 소유 bid + 상품 status='OPEN' + 미당첨(isWinner=0)
+//   - 즉시구매(BUYNOW, bidId 없음)는 본 라우트로 취소 불가 (당첨/구매 확정건이므로).
+//   - 트랜잭션: 포인트 환불 + 정원(-1) + bid 삭제 + 환불 내역 기록 (join 의 정확한 역연산)
+me.post('/bids/:id/cancel', async (c) => {
+  const user = c.get('user')!
+  const bidId = c.req.param('id')
+
+  // 1. 본인 소유 bid 조회
+  const bid = await c.env.DB.prepare(
+    'SELECT * FROM bids WHERE id = ? AND userId = ?'
+  ).bind(bidId, user.id).first<any>()
+  if (!bid) return c.json({ error: '참여 내역을 찾을 수 없습니다.' }, 404)
+
+  // 2. 이미 당첨된 건은 취소 불가
+  if (bid.isWinner) return c.json({ error: '이미 당첨된 경매는 취소할 수 없습니다.' }, 400)
+
+  // 3. 상품이 진행중(OPEN)일 때만 취소 가능
+  const product = await c.env.DB.prepare(
+    'SELECT id, title, status FROM products WHERE id = ?'
+  ).bind(bid.productId).first<any>()
+  if (!product) return c.json({ error: '상품을 찾을 수 없습니다.' }, 404)
+  if (product.status !== 'OPEN') {
+    return c.json({ error: '이미 마감(추첨)된 경매는 취소할 수 없습니다.' }, 400)
+  }
+
+  const refund = Number(bid.pointsUsed) || 0
+
+  // 4. 역연산 트랜잭션 (join 의 반대):
+  //    - bid 삭제를 조건부(userId 일치 + 아직 미당첨)로 하고 .requireRows() 표시하여
+  //      동시에 추첨/중복취소가 일어나면(0행) 트랜잭션 전체가 롤백되어 환불·정원복구도 취소된다.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        'DELETE FROM bids WHERE id = ? AND userId = ? AND isWinner = 0'
+      ).bind(bidId, user.id).requireRows(),
+      c.env.DB.prepare(
+        'UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?'
+      ).bind(refund, user.id),
+      c.env.DB.prepare(
+        'UPDATE products SET participantCount = participantCount - 1 WHERE id = ? AND participantCount > 0'
+      ).bind(bid.productId),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId('ph-'), user.id, refund, `경매 참여 취소 (환불): ${product.title}`),
+    ])
+  } catch (e: any) {
+    // 취소 대상 bid 가 이미 없거나 당첨 처리됨 → 취소 불가
+    if (e?.name === 'BatchGuardError') {
+      return c.json({ error: '이미 취소되었거나 취소할 수 없는 경매입니다.' }, 400)
+    }
+    throw e
+  }
+
+  // 참여 취소로 participantCount 가 바뀌었으므로 공개 목록 캐시 무효화
+  invalidate('products')
+
+  return c.json({ ok: true, refunded: refund, title: product.title })
 })
 
 // 당첨 상품 배송 정보 입력/수정 (당첨 제품은 반품 불가)

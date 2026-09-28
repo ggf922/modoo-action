@@ -844,6 +844,18 @@ async function pageBids(params, query) {
             : `<button onclick='openShipping(${JSON.stringify(b).replace(/'/g, "&#39;")})' class="text-xs bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">배송정보 보기</button>`}
         </div>`
       }
+      // 참여 취소 가능 건: 경매 참여(AUCTION) + 진행중(OPEN) + 미당첨
+      //   (즉시구매/당첨/마감 건은 취소 불가)
+      const canCancel = !isBuyNow && b.productStatus === 'OPEN' && !b.isWinner
+      let cancelRow = ''
+      if (canCancel) {
+        cancelRow = `<div class="flex items-center justify-end mt-2 pt-2 border-t border-gray-50">
+          <button onclick='cancelBid(${JSON.stringify({ id: b.id, title: b.title, pointsUsed: b.pointsUsed }).replace(/'/g, "&#39;")})'
+            class="text-xs bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition">
+            <i class="fas fa-xmark mr-1"></i>참여 취소
+          </button>
+        </div>`
+      }
       return `<div class="bg-white rounded-2xl border border-gray-100 p-3">
         <a href="#/products/${b.productId}" class="flex gap-3 hover:opacity-90 transition">
           <img src="${b.imageUrl}" class="w-20 h-20 rounded-xl object-cover" onerror="this.src='https://placehold.co/80'" />
@@ -856,9 +868,27 @@ async function pageBids(params, query) {
           </div>
         </a>
         ${shipRow}
+        ${cancelRow}
       </div>`
     }).join('') : '<p class="text-center text-gray-400 py-10 sm:col-span-2">참여 내역이 없습니다.</p>'}
   </div>`)
+}
+
+// 경매 참여 취소 (환불)
+//   진행중(OPEN) 경매의 미당첨 참여건만 취소 가능. 취소 시 참여 포인트를 되돌려받는다.
+async function cancelBid(b) {
+  const refund = won(b.pointsUsed)
+  if (!confirm(`이 경매 참여를 취소하시겠습니까?\n\n· 상품: ${b.title}\n· 환불 포인트: ${refund}P\n\n취소하면 경매 정원에서 빠지고 참여 포인트가 환불됩니다.`)) return
+  try {
+    const { data } = await api.post(`/me/bids/${b.id}/cancel`)
+    toast(`참여가 취소되었습니다. ${won(data.refunded)}P 환불 완료 💰`, 'success')
+    // 사용자 포인트/내역 갱신을 위해 현재 페이지 다시 로드
+    pageBids({}, (window.location.hash.split('?')[1] || '').split('&').reduce((o, kv) => {
+      const [k, v] = kv.split('='); if (k) o[k] = decodeURIComponent(v || ''); return o
+    }, {}))
+  } catch (err) {
+    toast(errMsg(err), 'error')
+  }
 }
 
 // 당첨 상품 배송정보 입력 모달 (당첨 제품 반품 불가 안내 포함)

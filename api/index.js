@@ -9424,6 +9424,47 @@ me.get("/bids", async (c) => {
   );
   return c.json({ bids: merged });
 });
+me.post("/bids/:id/cancel", async (c) => {
+  const user = c.get("user");
+  const bidId = c.req.param("id");
+  const bid = await c.env.DB.prepare(
+    "SELECT * FROM bids WHERE id = ? AND userId = ?"
+  ).bind(bidId, user.id).first();
+  if (!bid) return c.json({ error: "\uCC38\uC5EC \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (bid.isWinner) return c.json({ error: "\uC774\uBBF8 \uB2F9\uCCA8\uB41C \uACBD\uB9E4\uB294 \uCDE8\uC18C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  const product = await c.env.DB.prepare(
+    "SELECT id, title, status FROM products WHERE id = ?"
+  ).bind(bid.productId).first();
+  if (!product) return c.json({ error: "\uC0C1\uD488\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  if (product.status !== "OPEN") {
+    return c.json({ error: "\uC774\uBBF8 \uB9C8\uAC10(\uCD94\uCCA8)\uB41C \uACBD\uB9E4\uB294 \uCDE8\uC18C\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 400);
+  }
+  const refund = Number(bid.pointsUsed) || 0;
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "DELETE FROM bids WHERE id = ? AND userId = ? AND isWinner = 0"
+      ).bind(bidId, user.id).requireRows(),
+      c.env.DB.prepare(
+        "UPDATE users SET auctionPoint = auctionPoint + ? WHERE id = ?"
+      ).bind(refund, user.id),
+      c.env.DB.prepare(
+        "UPDATE products SET participantCount = participantCount - 1 WHERE id = ? AND participantCount > 0"
+      ).bind(bid.productId),
+      c.env.DB.prepare(
+        `INSERT INTO point_history (id, userId, type, pointKind, amount, description, createdAt)
+         VALUES (?, ?, 'CHARGE', 'AUCTION', ?, ?, datetime('now'))`
+      ).bind(genId("ph-"), user.id, refund, `\uACBD\uB9E4 \uCC38\uC5EC \uCDE8\uC18C (\uD658\uBD88): ${product.title}`)
+    ]);
+  } catch (e) {
+    if (e?.name === "BatchGuardError") {
+      return c.json({ error: "\uC774\uBBF8 \uCDE8\uC18C\uB418\uC5C8\uAC70\uB098 \uCDE8\uC18C\uD560 \uC218 \uC5C6\uB294 \uACBD\uB9E4\uC785\uB2C8\uB2E4." }, 400);
+    }
+    throw e;
+  }
+  invalidate("products");
+  return c.json({ ok: true, refunded: refund, title: product.title });
+});
 me.post("/winners/:id/shipping", async (c) => {
   const user = c.get("user");
   const winnerId = c.req.param("id");
@@ -10831,15 +10872,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820v"></script>
-  <script src="/static/i18n.js?v=20260820v"></script>
-  <script src="/static/i18n-dict.js?v=20260820v"></script>
-  <script src="/static/components.js?v=20260820v"></script>
-  <script src="/static/pages.js?v=20260820v"></script>
-  <script src="/static/mypage.js?v=20260820v"></script>
-  <script src="/static/network.js?v=20260820v"></script>
-  <script src="/static/admin.js?v=20260820v"></script>
-  <script src="/static/app.js?v=20260820v"></script>
+  <script src="/static/api.js?v=20260820w"></script>
+  <script src="/static/i18n.js?v=20260820w"></script>
+  <script src="/static/i18n-dict.js?v=20260820w"></script>
+  <script src="/static/components.js?v=20260820w"></script>
+  <script src="/static/pages.js?v=20260820w"></script>
+  <script src="/static/mypage.js?v=20260820w"></script>
+  <script src="/static/network.js?v=20260820w"></script>
+  <script src="/static/admin.js?v=20260820w"></script>
+  <script src="/static/app.js?v=20260820w"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;
