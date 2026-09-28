@@ -7,7 +7,7 @@ import { genId } from '../lib/auth'
 import { drawWinners } from '../lib/draw'
 import { invalidate } from '../lib/cache'
 import { ensureSubscriptionSchema, extendOneMonth, ensureWithdrawalAccountColumns } from './me'
-import { ensureProductUrlColumn, ensureBuyNowPriceColumn, ensurePartnerTable } from './products'
+import { ensureProductUrlColumn, ensureBuyNowPriceColumn, ensurePartnerTable, ensureAiInquiryTable } from './products'
 import { ensureMemberFlags, maybePayReferralReward, maybePromoteToVVIP, recalcVVIP } from '../lib/referral'
 
 const admin = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -572,6 +572,37 @@ admin.post('/partner-applications/:id/delete', async (c) => {
   const res = await c.env.DB.prepare('DELETE FROM partner_applications WHERE id = ?').bind(id).run()
   const changes = res.meta?.changes ?? res.changes ?? 0
   if (!changes) return c.json({ error: '신청 내역을 찾을 수 없습니다.' }, 404)
+  return c.json({ ok: true })
+})
+
+// ===== 낭만 AI 서비스 문의 관리 =====
+admin.get('/ai-inquiries', async (c) => {
+  await ensureAiInquiryTable(c.env.DB)
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, name, phone, service, email, message, status, createdAt
+     FROM ai_inquiries ORDER BY createdAt DESC`
+  ).all()).results
+  return c.json({ inquiries: rows })
+})
+
+admin.post('/ai-inquiries/:id/status', async (c) => {
+  await ensureAiInquiryTable(c.env.DB)
+  const id = c.req.param('id')
+  const b = await c.req.json().catch(() => null)
+  const status = (b?.status ?? '').toString().trim()
+  if (!['NEW', 'DONE'].includes(status)) return c.json({ error: '올바르지 않은 상태입니다.' }, 400)
+  const res = await c.env.DB.prepare('UPDATE ai_inquiries SET status = ? WHERE id = ?').bind(status, id).run()
+  const changes = res.meta?.changes ?? res.changes ?? 0
+  if (!changes) return c.json({ error: '문의 내역을 찾을 수 없습니다.' }, 404)
+  return c.json({ ok: true, status })
+})
+
+admin.post('/ai-inquiries/:id/delete', async (c) => {
+  await ensureAiInquiryTable(c.env.DB)
+  const id = c.req.param('id')
+  const res = await c.env.DB.prepare('DELETE FROM ai_inquiries WHERE id = ?').bind(id).run()
+  const changes = res.meta?.changes ?? res.changes ?? 0
+  if (!changes) return c.json({ error: '문의 내역을 찾을 수 없습니다.' }, 404)
   return c.json({ ok: true })
 })
 

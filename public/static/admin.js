@@ -49,6 +49,7 @@ function adminLayout(active, content) {
     ['/admin/shipments', 'fa-truck-fast', '배송관리'],
     ['/admin/withdrawals', 'fa-money-bill-transfer', '출금관리'],
     ['/admin/partners', 'fa-handshake-angle', '입점신청'],
+    ['/admin/ai-inquiries', 'fa-wand-magic-sparkles', 'AI문의'],
     ['/admin/config', 'fa-gear', '설정'],
   ]
   const nav = tabs.map(([href, icon, label]) =>
@@ -2507,5 +2508,76 @@ async function deletePartner(id, btn) {
     await api.post('/admin/partner-applications/' + id + '/delete', {})
     toast('삭제했어요.', 'success')
     pageAdminPartners()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+}
+
+// ===== 낭만 AI 서비스 문의 관리 =====
+async function pageAdminAiInquiries() {
+  if (!adminGuard()) return
+  document.getElementById('app').innerHTML = renderLoading()
+  let items = []
+  try {
+    items = (await api.get('/admin/ai-inquiries')).data.inquiries || []
+  } catch (err) {
+    document.getElementById('app').innerHTML = adminLayout('/admin/ai-inquiries',
+      `<p class="text-center text-red-500 py-10">${errMsg(err)}</p>`)
+    return
+  }
+
+  const newCount = items.filter(a => a.status !== 'DONE').length
+  const rows = items.length ? items.map(a => {
+    const done = a.status === 'DONE'
+    const badge = done
+      ? '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-bold">처리완료</span>'
+      : '<span class="text-xs px-2 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-700 font-bold">신규</span>'
+    return `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-extrabold text-gray-800">${a.name || '-'}</span>${badge}
+            ${a.service ? `<span class="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">${(a.service||'').replace(/</g,'&lt;')}</span>` : ''}
+          </div>
+          <div class="text-xs text-gray-400 mt-0.5">${fmtDateTime(a.createdAt)}</div>
+        </div>
+        <div class="flex gap-1.5 shrink-0">
+          ${done
+            ? `<button onclick="setAiInquiryStatus('${a.id}','NEW',this)" class="bg-white border border-fuchsia-300 text-fuchsia-600 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-fuchsia-50 whitespace-nowrap"><i class="fas fa-rotate-left"></i> 신규로</button>`
+            : `<button onclick="setAiInquiryStatus('${a.id}','DONE',this)" class="bg-white border border-green-400 text-green-600 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-green-50 whitespace-nowrap"><i class="fas fa-check"></i> 처리완료</button>`}
+          <button onclick="deleteAiInquiry('${a.id}',this)" class="bg-white border border-red-300 text-red-500 px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-50 whitespace-nowrap"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div><span class="text-gray-400">전화번호</span> <a href="tel:${a.phone || ''}" class="font-medium text-fuchsia-600">${a.phone || '-'}</a></div>
+        <div><span class="text-gray-400">이메일</span> <span class="font-medium text-gray-700">${a.email || '-'}</span></div>
+      </div>
+      ${a.message ? `<div class="mt-2 text-sm text-gray-600 bg-gray-50 rounded-xl p-3 whitespace-pre-wrap leading-relaxed">${(a.message || '').replace(/</g,'&lt;')}</div>` : ''}
+    </div>`
+  }).join('') : '<div class="text-center text-gray-300 py-16">접수된 AI 서비스 문의가 없습니다.</div>'
+
+  document.getElementById('app').innerHTML = adminLayout('/admin/ai-inquiries', `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="text-lg font-extrabold text-gray-800"><i class="fas fa-wand-magic-sparkles text-fuchsia-600"></i> 낭만 AI 서비스 문의</h2>
+      <span class="text-sm text-gray-400">전체 <b class="text-gray-600">${items.length}</b>건 · 신규 <b class="text-fuchsia-600">${newCount}</b>건</span>
+    </div>
+    <div class="space-y-3">${rows}</div>`)
+}
+
+async function setAiInquiryStatus(id, status, btn) {
+  if (btn) btn.disabled = true
+  try {
+    await api.post('/admin/ai-inquiries/' + id + '/status', { status })
+    toast(status === 'DONE' ? '처리완료로 변경했어요.' : '신규로 되돌렸어요.', 'success')
+    pageAdminAiInquiries()
+  } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+}
+
+async function deleteAiInquiry(id, btn) {
+  if (!confirm('이 문의를 삭제하시겠습니까?')) return
+  if (btn) btn.disabled = true
+  try {
+    await api.post('/admin/ai-inquiries/' + id + '/delete', {})
+    toast('삭제했어요.', 'success')
+    pageAdminAiInquiries()
   } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
 }

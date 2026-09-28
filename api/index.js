@@ -9216,6 +9216,47 @@ products.post("/partner-apply", async (c) => {
   ).run();
   return c.json({ ok: true });
 });
+var _aiInquiryReady = false;
+async function ensureAiInquiryTable(DB) {
+  if (_aiInquiryReady) return;
+  await DB.prepare(`
+    CREATE TABLE IF NOT EXISTS ai_inquiries (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      service TEXT,
+      email TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'NEW',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+  _aiInquiryReady = true;
+}
+products.post("/ai-inquiry", async (c) => {
+  await ensureAiInquiryTable(c.env.DB);
+  const b2 = await c.req.json().catch(() => null);
+  const name = (b2?.name ?? "").toString().trim();
+  const phone = (b2?.phone ?? "").toString().trim();
+  const service = (b2?.service ?? "").toString().trim();
+  const email = (b2?.email ?? "").toString().trim();
+  const message2 = (b2?.message ?? "").toString().trim();
+  if (!name) return c.json({ error: "\uC774\uB984\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  if (!phone) return c.json({ error: "\uC804\uD654\uBC88\uD638\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694." }, 400);
+  const cut = (s, n) => s.slice(0, n);
+  await c.env.DB.prepare(
+    `INSERT INTO ai_inquiries (id, name, phone, service, email, message, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'NEW', datetime('now'))`
+  ).bind(
+    genId("ai-"),
+    cut(name, 50),
+    cut(phone, 40),
+    cut(service, 100),
+    cut(email, 120),
+    cut(message2, 2e3)
+  ).run();
+  return c.json({ ok: true });
+});
 var products_default = products;
 
 // src/lib/referral.ts
@@ -10104,6 +10145,33 @@ admin.post("/partner-applications/:id/delete", async (c) => {
   if (!changes) return c.json({ error: "\uC2E0\uCCAD \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
   return c.json({ ok: true });
 });
+admin.get("/ai-inquiries", async (c) => {
+  await ensureAiInquiryTable(c.env.DB);
+  const rows = (await c.env.DB.prepare(
+    `SELECT id, name, phone, service, email, message, status, createdAt
+     FROM ai_inquiries ORDER BY createdAt DESC`
+  ).all()).results;
+  return c.json({ inquiries: rows });
+});
+admin.post("/ai-inquiries/:id/status", async (c) => {
+  await ensureAiInquiryTable(c.env.DB);
+  const id = c.req.param("id");
+  const b2 = await c.req.json().catch(() => null);
+  const status = (b2?.status ?? "").toString().trim();
+  if (!["NEW", "DONE"].includes(status)) return c.json({ error: "\uC62C\uBC14\uB974\uC9C0 \uC54A\uC740 \uC0C1\uD0DC\uC785\uB2C8\uB2E4." }, 400);
+  const res = await c.env.DB.prepare("UPDATE ai_inquiries SET status = ? WHERE id = ?").bind(status, id).run();
+  const changes = res.meta?.changes ?? res.changes ?? 0;
+  if (!changes) return c.json({ error: "\uBB38\uC758 \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  return c.json({ ok: true, status });
+});
+admin.post("/ai-inquiries/:id/delete", async (c) => {
+  await ensureAiInquiryTable(c.env.DB);
+  const id = c.req.param("id");
+  const res = await c.env.DB.prepare("DELETE FROM ai_inquiries WHERE id = ?").bind(id).run();
+  const changes = res.meta?.changes ?? res.changes ?? 0;
+  if (!changes) return c.json({ error: "\uBB38\uC758 \uB0B4\uC5ED\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4." }, 404);
+  return c.json({ ok: true });
+});
 admin.get("/convivia", async (c) => {
   await ensureConviviaColumn(c.env.DB);
   const rows = (await c.env.DB.prepare(
@@ -10740,6 +10808,19 @@ function renderApp() {
     @keyframes confetti-fall { to { transform: translateY(120vh) rotate(720deg); opacity: 0; } }
     .animate-pop { animation: pop .4s cubic-bezier(.2,.8,.3,1.2) both; }
     .animate-fadeup { animation: fadeup .4s ease both; }
+    /* \uBC18\uC9DD\uC774\uB294 \uBC30\uB108 (glow \uD384\uC2A4 + shimmer \uAD11\uD0DD) */
+    @keyframes bannerGlow {
+      0%,100% { box-shadow: 0 0 12px 2px rgba(168,85,247,.45), 0 0 24px 6px rgba(236,72,153,.25); }
+      50% { box-shadow: 0 0 24px 6px rgba(168,85,247,.8), 0 0 48px 14px rgba(236,72,153,.5); }
+    }
+    @keyframes bannerShine {
+      0% { transform: translateX(-120%) skewX(-20deg); }
+      60%,100% { transform: translateX(320%) skewX(-20deg); }
+    }
+    .banner-glow { animation: bannerGlow 2s ease-in-out infinite; }
+    .banner-shine { position: absolute; top: 0; bottom: 0; width: 40%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+      animation: bannerShine 2.8s ease-in-out infinite; pointer-events: none; }
     .gauge-icon { transition: all .3s ease; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
@@ -10750,15 +10831,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820u"></script>
-  <script src="/static/i18n.js?v=20260820u"></script>
-  <script src="/static/i18n-dict.js?v=20260820u"></script>
-  <script src="/static/components.js?v=20260820u"></script>
-  <script src="/static/pages.js?v=20260820u"></script>
-  <script src="/static/mypage.js?v=20260820u"></script>
-  <script src="/static/network.js?v=20260820u"></script>
-  <script src="/static/admin.js?v=20260820u"></script>
-  <script src="/static/app.js?v=20260820u"></script>
+  <script src="/static/api.js?v=20260820v"></script>
+  <script src="/static/i18n.js?v=20260820v"></script>
+  <script src="/static/i18n-dict.js?v=20260820v"></script>
+  <script src="/static/components.js?v=20260820v"></script>
+  <script src="/static/pages.js?v=20260820v"></script>
+  <script src="/static/mypage.js?v=20260820v"></script>
+  <script src="/static/network.js?v=20260820v"></script>
+  <script src="/static/admin.js?v=20260820v"></script>
+  <script src="/static/app.js?v=20260820v"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

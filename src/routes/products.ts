@@ -328,4 +328,49 @@ products.post('/partner-apply', async (c) => {
   return c.json({ ok: true })
 })
 
+// ===== 낭만 AI 서비스 문의 =====
+// 메인 화면 배너 클릭 시 뜨는 문의 폼. ai_inquiries 테이블에 저장되고 관리자 모드에서 조회한다.
+let _aiInquiryReady = false
+export async function ensureAiInquiryTable(DB: any) {
+  if (_aiInquiryReady) return
+  await DB.prepare(`
+    CREATE TABLE IF NOT EXISTS ai_inquiries (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      service TEXT,
+      email TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'NEW',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run()
+  _aiInquiryReady = true
+}
+
+// AI 서비스 문의 제출 (공개)
+products.post('/ai-inquiry', async (c) => {
+  await ensureAiInquiryTable(c.env.DB)
+  const b = await c.req.json().catch(() => null)
+  const name = (b?.name ?? '').toString().trim()
+  const phone = (b?.phone ?? '').toString().trim()
+  const service = (b?.service ?? '').toString().trim()
+  const email = (b?.email ?? '').toString().trim()
+  const message = (b?.message ?? '').toString().trim()
+
+  if (!name) return c.json({ error: '이름을 입력해주세요.' }, 400)
+  if (!phone) return c.json({ error: '전화번호를 입력해주세요.' }, 400)
+
+  const cut = (s: string, n: number) => s.slice(0, n)
+  await c.env.DB.prepare(
+    `INSERT INTO ai_inquiries (id, name, phone, service, email, message, status, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, 'NEW', datetime('now'))`
+  ).bind(
+    genId('ai-'),
+    cut(name, 50), cut(phone, 40), cut(service, 100), cut(email, 120), cut(message, 2000)
+  ).run()
+
+  return c.json({ ok: true })
+})
+
 export default products

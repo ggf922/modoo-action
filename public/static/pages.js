@@ -63,6 +63,36 @@ async function pageHome() {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 opacity-80">${drawn.map(p => renderProductCard(p, false)).join('')}</div>
   ` : ''
 
+  // 낭만 AI 서비스 배너 (추천상품 밑, 반짝임) — 클릭 시 문의 폼 모달
+  const aiServiceBanner = `
+  <section id="ai-service-banner" class="mb-10">
+    <button type="button" onclick="openAiServiceInquiry()"
+      class="banner-glow relative w-full overflow-hidden rounded-2xl px-6 py-5 sm:py-6 text-left text-white
+             bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 hover:brightness-110 transition">
+      <span class="banner-shine"></span>
+      <div class="relative z-10 flex items-center gap-4">
+        <div class="shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-2xl sm:text-3xl">
+          <i class="fas fa-wand-magic-sparkles"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="inline-flex items-center gap-1.5 bg-white/25 backdrop-blur px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-bold mb-1"><i class="fas fa-bolt"></i> 낭만 AI</div>
+          <h3 class="text-lg sm:text-2xl font-extrabold leading-tight">낭만 AI 맞춤 웹/앱/Ai자동화 서비스 구축</h3>
+          <p class="text-white/85 text-xs sm:text-sm mt-0.5">상세페이지 · 동영상 쇼츠/롱폼 · 랜딩페이지 · 업무 자동화 · 웹/앱 개발 · 창업까지</p>
+        </div>
+        <div class="shrink-0 hidden sm:flex items-center">
+          <span class="inline-flex items-center gap-2 bg-white text-fuchsia-700 font-extrabold px-5 py-2.5 rounded-full shadow-md text-sm whitespace-nowrap">
+            문의하기 <i class="fas fa-arrow-right"></i>
+          </span>
+        </div>
+      </div>
+      <div class="relative z-10 mt-3 sm:hidden">
+        <span class="inline-flex w-full items-center justify-center gap-2 bg-white text-fuchsia-700 font-extrabold px-5 py-2.5 rounded-full shadow-md text-sm">
+          문의하기 <i class="fas fa-arrow-right"></i>
+        </span>
+      </div>
+    </button>
+  </section>`
+
   // 무료검사하기 배너 (첫 화면 푸터 바로 위) — 클릭 시 pawtype16 으로 이동
   const videoBanner = `
   <section id="free-check-banner" class="mt-12">
@@ -138,7 +168,7 @@ async function pageHome() {
     </div>
   </section>`
 
-  appEl.innerHTML = layout(hero + openGrid + drawnGrid + videoBanner + healthBanner + partnerForm)
+  appEl.innerHTML = layout(hero + openGrid + aiServiceBanner + drawnGrid + videoBanner + healthBanner + partnerForm)
 
   // 입점 신청 제출 핸들러
   const paForm = document.getElementById('partner-apply-form')
@@ -523,4 +553,64 @@ async function pageGuideAuction() {
       <i class="fas fa-chevron-left"></i> 이전: 회원가입 방법
     </a>
   </div>`)
+}
+
+// ===== 낭만 AI 서비스 문의 폼 (배너 클릭 시) =====
+function openAiServiceInquiry() {
+  const services = [
+    '상세페이지 (10만원)',
+    '동영상 쇼츠 (10만원)',
+    '동영상 롱폼 (30만원)',
+    '랜딩페이지 (30만원)',
+    'Ai 업무 자동화',
+    '맞춤형 웹/앱 개발',
+    '창업 (제품소싱 및 사이트 개설) (30만원)',
+    '기타',
+  ]
+  const options = services.map(s => `<option value="${s}">${s}</option>`).join('')
+  openModal(`
+  <div class="p-6">
+    <div class="text-center mb-5">
+      <div class="inline-flex items-center gap-1.5 bg-fuchsia-100 text-fuchsia-700 px-3 py-1 rounded-full text-xs font-bold mb-2"><i class="fas fa-wand-magic-sparkles"></i> 낭만 AI</div>
+      <h3 class="text-xl font-extrabold text-gray-800">맞춤 웹/앱/Ai자동화 서비스 문의</h3>
+      <p class="text-gray-400 text-sm mt-1">원하시는 서비스를 선택하고 정보를 남겨주세요.<br/>담당자가 빠르게 연락드립니다.</p>
+    </div>
+    <form id="ai-inquiry-form" class="space-y-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="block text-sm font-medium mb-1">이름 <span class="text-fuchsia-600">*</span></label>
+          <input name="name" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-100 outline-none" placeholder="예: 홍길동" /></div>
+        <div><label class="block text-sm font-medium mb-1">전화번호 <span class="text-fuchsia-600">*</span></label>
+          <input name="phone" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-100 outline-none" placeholder="010-0000-0000" /></div>
+      </div>
+      <div><label class="block text-sm font-medium mb-1">서비스 종류 <span class="text-fuchsia-600">*</span></label>
+        <select name="service" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-100 outline-none bg-white">
+          ${options}
+        </select></div>
+      <div><label class="block text-sm font-medium mb-1">이메일</label>
+        <input name="email" type="email" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-100 outline-none" placeholder="you@email.com" /></div>
+      <div><label class="block text-sm font-medium mb-1">문의사항</label>
+        <textarea name="message" rows="4" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-fuchsia-500 focus:ring-2 focus:ring-fuchsia-100 outline-none resize-none" placeholder="원하시는 내용을 자유롭게 작성해주세요."></textarea></div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="closeModal()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200 transition">닫기</button>
+        <button type="submit" class="flex-1 bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white font-bold py-3 rounded-xl hover:opacity-90 transition"><i class="fas fa-paper-plane"></i> 문의 보내기</button>
+      </div>
+    </form>
+  </div>`, { maxWidth: 'max-w-lg' })
+
+  const form = document.getElementById('ai-inquiry-form')
+  if (form) form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const payload = {
+      name: fd.get('name'), phone: fd.get('phone'), service: fd.get('service'),
+      email: fd.get('email'), message: fd.get('message'),
+    }
+    const btn = e.target.querySelector('button[type=submit]')
+    if (btn) btn.disabled = true
+    try {
+      await api.post('/products/ai-inquiry', payload)
+      toast('문의가 접수되었어요! 담당자가 빠르게 연락드립니다. 🚀', 'success')
+      closeModal()
+    } catch (err) { toast(errMsg(err), 'error'); if (btn) btn.disabled = false }
+  })
 }

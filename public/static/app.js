@@ -27,6 +27,7 @@ Router.add('/admin/subscriptions', pageAdminSubscriptions)
 Router.add('/admin/shipments', pageAdminShipments)
 Router.add('/admin/withdrawals', pageAdminWithdrawals)
 Router.add('/admin/partners', pageAdminPartners)
+Router.add('/admin/ai-inquiries', pageAdminAiInquiries)
 Router.add('/admin/config', pageAdminConfig)
 
 // 현재 라우트 다시 렌더 (헤더 갱신 등)
