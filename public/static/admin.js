@@ -250,7 +250,7 @@ async function pageAdminProductForm(params) {
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-sm font-medium mb-1">카테고리 *</label>
           <select name="category" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange">
-            ${['전자기기','가전','생활용품','식품','패션','기타'].map(cat => `<option ${p.category===cat?'selected':''}>${cat}</option>`).join('')}
+            ${['전자기기','가전','생활용품','식품','건강식품','화장품','패션','기타'].map(cat => `<option ${p.category===cat?'selected':''}>${cat}</option>`).join('')}
           </select></div>
         ${id ? `<div><label class="block text-sm font-medium mb-1">상태</label>
           <select name="status" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 outline-none focus:border-brand-orange">
