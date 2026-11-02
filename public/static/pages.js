@@ -64,6 +64,15 @@ async function pageHome() {
   ` : ''
 
   // 낭만 AI 서비스 배너 (추천상품 밑, 반짝임) — 클릭 시 문의 폼 모달
+  // AITC 배너 (낭만 AI 배너 바로 위) — 클릭 시 aitcland.biz 로그인으로 이동
+  const aitcBanner = `
+  <section id="aitc-banner" class="mb-4">
+    <a href="https://www.aitcland.biz/login" target="_blank" rel="noopener noreferrer"
+       class="block rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
+      <img src="/static/aitc-banner.jpg" alt="AITC - Artificial Intelligence Triple C" class="w-full h-auto block" />
+    </a>
+  </section>`
+
   const aiServiceBanner = `
   <section id="ai-service-banner" class="mb-10">
     <button type="button" onclick="openAiServiceInquiry()"
@@ -168,7 +177,7 @@ async function pageHome() {
     </div>
   </section>`
 
-  appEl.innerHTML = layout(hero + openGrid + aiServiceBanner + drawnGrid + videoBanner + healthBanner + partnerForm)
+  appEl.innerHTML = layout(hero + openGrid + aitcBanner + aiServiceBanner + drawnGrid + videoBanner + healthBanner + partnerForm)
 
   // 입점 신청 제출 핸들러
   const paForm = document.getElementById('partner-apply-form')
