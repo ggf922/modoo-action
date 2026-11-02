@@ -10862,6 +10862,19 @@ function renderApp() {
     .banner-shine { position: absolute; top: 0; bottom: 0; width: 40%;
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
       animation: bannerShine 2.8s ease-in-out infinite; pointer-events: none; }
+    /* AITC \uB3C5\uC218\uB9AC \uB85C\uACE0 \u2014 \uB0A0\uAC2F\uC9D3\uD558\uB4EF \uBD80\uC720\uD558\uB294 \uC560\uB2C8\uBA54\uC774\uC158 */
+    @keyframes eagleFly {
+      0%,100% { transform: translateY(0) scale(1) rotate(0deg); }
+      25%     { transform: translateY(-3px) scale(1.015) rotate(-0.6deg); }
+      50%     { transform: translateY(-5px) scale(1.03); }
+      75%     { transform: translateY(-3px) scale(1.015) rotate(0.6deg); }
+    }
+    @keyframes eagleGlow {
+      0%,100% { filter: drop-shadow(0 2px 4px rgba(234,179,8,.25)); }
+      50%     { filter: drop-shadow(0 6px 12px rgba(234,179,8,.6)); }
+    }
+    .aitc-eagle { animation: eagleFly 3.2s ease-in-out infinite, eagleGlow 3.2s ease-in-out infinite; transform-origin: center bottom; will-change: transform, filter; }
+    @media (prefers-reduced-motion: reduce) { .aitc-eagle { animation: none; } }
     .gauge-icon { transition: all .3s ease; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
@@ -10872,15 +10885,15 @@ function renderApp() {
   <div id="app"></div>
   <div id="modal-root"></div>
   <div id="toast-root" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
-  <script src="/static/api.js?v=20260820ab"></script>
-  <script src="/static/i18n.js?v=20260820ab"></script>
-  <script src="/static/i18n-dict.js?v=20260820ab"></script>
-  <script src="/static/components.js?v=20260820ab"></script>
-  <script src="/static/pages.js?v=20260820ab"></script>
-  <script src="/static/mypage.js?v=20260820ab"></script>
-  <script src="/static/network.js?v=20260820ab"></script>
-  <script src="/static/admin.js?v=20260820ab"></script>
-  <script src="/static/app.js?v=20260820ab"></script>
+  <script src="/static/api.js?v=20260820ac"></script>
+  <script src="/static/i18n.js?v=20260820ac"></script>
+  <script src="/static/i18n-dict.js?v=20260820ac"></script>
+  <script src="/static/components.js?v=20260820ac"></script>
+  <script src="/static/pages.js?v=20260820ac"></script>
+  <script src="/static/mypage.js?v=20260820ac"></script>
+  <script src="/static/network.js?v=20260820ac"></script>
+  <script src="/static/admin.js?v=20260820ac"></script>
+  <script src="/static/app.js?v=20260820ac"></script>
   <script>if (typeof I18N !== 'undefined') I18N.init()</script>
 </body>
 </html>`;

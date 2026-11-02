@@ -73,10 +73,9 @@ async function pageHome() {
        style="background: radial-gradient(120% 140% at 15% 20%, #1e293b 0%, #0f172a 45%, #020617 100%);">
       <div class="relative px-6 py-5 sm:px-10 sm:py-6">
         <div class="flex items-center gap-4 sm:gap-6">
-          <!-- 엠블럼 (CSS 골드 테두리 원형 + 아이콘) -->
-          <div class="shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl"
-               style="background: linear-gradient(145deg, rgba(234,179,8,.18), rgba(234,179,8,.04)); border: 1.5px solid rgba(234,179,8,.5); box-shadow: inset 0 0 18px rgba(234,179,8,.15);">
-            <i class="fas fa-feather-pointed" style="background: linear-gradient(135deg,#fde68a,#d4a017,#92610a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;"></i>
+          <!-- 독수리 엠블럼 (고화질 로고 + 날갯짓 애니메이션) -->
+          <div class="shrink-0 w-20 h-16 sm:w-24 sm:h-20 flex items-center justify-center">
+            <img src="/static/aitc-eagle.png" alt="AITC 독수리 엠블럼" class="aitc-eagle w-full h-full object-contain" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline gap-2">
