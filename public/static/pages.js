@@ -65,11 +65,42 @@ async function pageHome() {
 
   // 낭만 AI 서비스 배너 (추천상품 밑, 반짝임) — 클릭 시 문의 폼 모달
   // AITC 배너 (낭만 AI 배너 바로 위) — 클릭 시 aitcland.biz 로그인으로 이동
+  //   저화질 이미지 대신 CSS/HTML 로 깔끔하게 재구성 (어떤 화면에서도 선명 + 세로 규격 통일)
   const aitcBanner = `
   <section id="aitc-banner" class="mb-4">
     <a href="https://www.aitcland.biz/login" target="_blank" rel="noopener noreferrer"
-       class="block rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer">
-      <img src="/static/aitc-banner.jpg" alt="AITC - Artificial Intelligence Triple C" class="w-full h-auto block" />
+       class="block rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 cursor-pointer"
+       style="background: radial-gradient(120% 140% at 15% 20%, #1e293b 0%, #0f172a 45%, #020617 100%);">
+      <div class="relative px-6 py-5 sm:px-10 sm:py-6">
+        <div class="flex items-center gap-4 sm:gap-6">
+          <!-- 엠블럼 (CSS 골드 테두리 원형 + 아이콘) -->
+          <div class="shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl"
+               style="background: linear-gradient(145deg, rgba(234,179,8,.18), rgba(234,179,8,.04)); border: 1.5px solid rgba(234,179,8,.5); box-shadow: inset 0 0 18px rgba(234,179,8,.15);">
+            <i class="fas fa-feather-pointed" style="background: linear-gradient(135deg,#fde68a,#d4a017,#92610a); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2">
+              <span class="text-2xl sm:text-3xl font-extrabold tracking-wide"
+                    style="background: linear-gradient(135deg,#fef3c7,#eab308,#a16207); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">AITC</span>
+              <span class="text-amber-200/50 text-sm sm:text-base font-semibold">|</span>
+              <span class="text-amber-100/70 text-[11px] sm:text-sm font-medium truncate">Artificial Intelligence Triple C</span>
+            </div>
+            <p class="text-amber-100/60 text-xs sm:text-sm mt-1 truncate"><i class="fas fa-circle-check mr-1 text-amber-400/70"></i> Leading AI Solutions · Tech Innovation · Future-Proof</p>
+          </div>
+          <div class="shrink-0 hidden sm:flex items-center">
+            <span class="inline-flex items-center gap-2 font-extrabold px-5 py-2.5 rounded-full text-sm whitespace-nowrap"
+                  style="background: linear-gradient(135deg,#fde68a,#eab308); color:#422006; box-shadow:0 4px 14px rgba(234,179,8,.35);">
+              바로가기 <i class="fas fa-arrow-right"></i>
+            </span>
+          </div>
+        </div>
+        <div class="mt-3 sm:hidden">
+          <span class="inline-flex w-full items-center justify-center gap-2 font-extrabold px-5 py-2.5 rounded-full text-sm"
+                style="background: linear-gradient(135deg,#fde68a,#eab308); color:#422006; box-shadow:0 4px 14px rgba(234,179,8,.35);">
+            바로가기 <i class="fas fa-arrow-right"></i>
+          </span>
+        </div>
+      </div>
     </a>
   </section>`
 
